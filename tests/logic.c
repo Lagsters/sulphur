@@ -875,6 +875,93 @@ void save_tests()
     lang = 0;
 }
 
+// ---------------------------------------------------------------------------
+//   cases found in the code review
+// ---------------------------------------------------------------------------
+
+void review_tests()
+{
+    test( "a closing wall kills a player whose body still reaches into its cell" );
+    blank_arena( 32, 18 );
+    Player* p = put_player( 0, 2, 5 );
+    p->x = gpx( 2 ) - 6;            // centre in column 2, the hitbox still in column 1
+    shrink_cell( 1, 5 );
+    expect( !p->alive, "the player survived inside the new wall" );
+
+    test( "a bomb laid under another player does not hold him in place" );
+    blank_arena( 32, 18 );
+    Player* a = put_player( 0, 5, 5 );
+    Player* b = put_player( 1, 5, 5 );
+    place_bomb( a );
+    int x0 = b->x;
+    walk( b, 1, 0, 8 );
+    expect( b->x > x0, "the other player could not step off the bomb" );
+
+    test( "a boss aims at a living hero when Dratewka is dead" );
+    story_arena( 32, 18 );
+    Player* d = put_hero( 0, 3, 3 );
+    Player* w = put_hero( 1, 20, 12 );
+    d->alive = false;
+    put_boss( BOSS_DRAGON, 15, 8, DRAGON_HP );
+    boss.warn = false;
+    dragon_breath();
+    expect( boss.warn_c == w->c && boss.warn_r == w->r, "the breath aimed at the dead hero" );
+
+    test( "a sheep caught by two heroes at once is one sheep" );
+    story_arena( 32, 18 );
+    Player* h1 = put_hero( 0, 3, 3 );
+    Player* h2 = put_hero( 1, 3, 3 );
+    spawn_sheep( cell( 3, 3 ) );
+    sheep_frame();
+    expect_eq( h1->sheep + h2->sheep, 1, "sheep carried" );
+
+    test( "a sheep never appears inside the boss" );
+    story_arena( 32, 18 );
+    put_hero( 0, 1, 1 );
+    put_boss( BOSS_DRAGON, 28, 14, DRAGON_HP );
+    bool inside = false;
+    for( int i = 0; i < 60; i++ )
+    {
+        spawn_sheep_far();
+        for( int s = 0; s < MAX_SHEEP; s++ )
+          if( sheep[ s ].alive ) { if( boss_covers( sheep[ s ].c, sheep[ s ].r ) ) inside = true; sheep[ s ].alive = false; }
+    }
+    expect( !inside, "a sheep appeared inside the dragon" );
+
+    test( "the skeletons of stage 29 start in different corners and have their own art" );
+    start_campaign( false, 29 );
+    bool apart = true, art = true;
+    for( int i = 0; i < player_count; i++ )
+      for( int j = i + 1; j < player_count; j++ )
+        if( players[ i ].team == 2 && players[ j ].team == 2 && players[ i ].c == players[ j ].c && players[ i ].r == players[ j ].r ) apart = false;
+    for( int i = 0; i < player_count; i++ ) if( players[ i ].team == 2 && players[ i ].look != 6 ) art = false;
+    expect( apart, "two skeletons share a corner" );
+    expect( art, "a skeleton has no skeleton art" );
+
+    test( "a hero bot walks to a far quest item past a nearer bonus" );
+    story_arena( 32, 18 );
+    Player* q = put_hero( 0, 16, 8 );
+    q->human = false;
+    add_item( 4, 8, ITEM_BOMB );        // 12 cells left, beyond the pickup range
+    add_item( 30, 8, ITEM_EXIT );       // 14 cells right
+    end_frame();                        // the search needs the frame's cycle budget
+    compute_danger();
+    expect_eq( pickup_dir( q ), 3, "direction (3 = right)" );
+
+    test( "a bot's plan with a field full of bombs ends within the frame" );
+    blank_arena( 32, 18 );
+    Player* bot = put_bot( 0, 15, 8 );
+    for( int i = 0; i < 4; i++ ) { players[ i ].stat_bombs = BOMB_CAP; }
+    put_bot( 1, 3, 3 ); put_bot( 2, 28, 3 ); put_bot( 3, 28, 14 );
+    for( int r = 2; r < 16; r += 2 ) for( int c = 3; c < 29; c += 4 ) add_bomb( c, r, 60 + c + r, 4, 1, false );
+    end_frame();
+    compute_danger();
+    int f0 = get_frame_counter();
+    bot_plans_left = BOT_PLANS;
+    bot_plan( bot );
+    expect_eq( get_frame_counter(), f0, "frames the plan took beyond this one" );
+}
+
 void main()
 {
     srand( 1 );
@@ -890,5 +977,6 @@ void main()
     sheep_tests();
     goal_tests();
     save_tests();
+    review_tests();
     finish_tests();
 }

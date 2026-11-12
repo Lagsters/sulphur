@@ -162,10 +162,23 @@ bool spawn_sheep( int k )
     return false;
 }
 
+bool boss_covers( int c, int r );
+
+// far from the heroes, and never inside the boss or on another sheep
 void spawn_sheep_far()
 {
     far_cells( T_EMPTY, ( W + H ) / 3 );
-    spawn_sheep( pop_far_free() );
+    while( true )
+    {
+        int k = pop_far_free();
+        if( k < 0 ) return;
+        int c = k % MAP_STRIDE, r = k / MAP_STRIDE;
+        bool taken = boss.kind != BOSS_NONE && boss.hp > 0 && boss_covers( c, r );
+        for( int i = 0; i < MAX_SHEEP; i++ ) if( sheep[ i ].alive && sheep[ i ].c == c && sheep[ i ].r == r ) taken = true;
+        if( taken ) continue;
+        spawn_sheep( k );
+        return;
+    }
 }
 
 // a sheep in a blast goes off: sulphur is sulphur (a closing wall only crushes it)
@@ -287,6 +300,7 @@ void update_sheep()
                     p->sheep++;
                     s->alive = false;
                     raise_event( EV_SHEEP_GOT );
+                    break;
                 }
             }
             if( !s->alive ) continue;
@@ -416,7 +430,12 @@ bool boss_free( int c, int r )
     return true;
 }
 
-Player* dratewka() { return &players[ 0 ]; }
+// the hero the bosses go for: Dratewka, or Wanda once he is down
+Player* dratewka()
+{
+    for( int i = 0; i < player_count; i++ ) if( players[ i ].alive && players[ i ].team == 1 ) return &players[ i ];
+    return &players[ 0 ];
+}
 
 void boss_teleport()
 {
@@ -547,10 +566,13 @@ void start_stage( int n )
     if( stage.chapter >= 2 ) { add_hero( 1, start_c[ 0 ], start_r[ 0 ] + 1 ); player_count = 2; }
     for( int i = 0; i < stage.skeletons; i++ )
     {
-        int corner = pick( i == 0, 3, pick( stage.scroll == SCROLL_TALL, 2, 1 ) );
+        // the far corner first, then the two others (the heroes hold the first)
+        int corner = 3;
+        if( i == 1 ) corner = pick( stage.scroll == SCROLL_TALL, 2, 1 );
+        if( i == 2 ) corner = pick( stage.scroll == SCROLL_TALL, 1, 2 );
         int id = player_count;
         new_player( id, start_c[ corner ], start_r[ corner ] );
-        players[ id ].team = 2; players[ id ].human = false; players[ id ].look = 9;
+        players[ id ].team = 2; players[ id ].human = false; players[ id ].look = LOOK_SKELETON;
         player_count++;
     }
     far_cells( T_EMPTY, 8 );

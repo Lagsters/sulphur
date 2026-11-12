@@ -26,8 +26,10 @@ struct Player
     int bot_dir_timer;
     int bot_plan_x, bot_plan_y;
     bool bot_planned;
-    int look;               // which art: 0 Dratewka, 1 Wanda, 2.. battle colours, 9 skeleton
+    int look;               // which art (tools/catalog.py LOOKS): 0 Dratewka, 1 Wanda, 2-5 Battle, 6 skeleton
 };
+
+#define LOOK_SKELETON  6
 
 struct Bomb
 {

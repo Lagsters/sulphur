@@ -47,8 +47,9 @@ void collect_item( Player* p )
     }
 }
 
-// cells where the hitbox at (x,y) lies; a player may stand in his own bomb until he leaves it
-bool own_bomb_under( Player* p, int c, int r )
+// the player's body overlaps cell (c,r): he may walk off a bomb lying there (his own, or one
+// laid under him by someone else) but not onto another one
+bool body_in_cell( Player* p, int c, int r )
 {
     int margin = 1;
     int x0 = gcol( p->x + margin ), x1 = gcol( p->x + TILE - margin - 1 );
@@ -68,9 +69,7 @@ bool blocked_at( Player* p, int x, int y )
     {
         int t = mget( cs[ k ], rs[ k ] );
         if( t == T_WALL || t == T_BLOCK ) return true;
-        if( !is_bomb( cs[ k ], rs[ k ] ) ) continue;
-        int b = bomb_at( cs[ k ], rs[ k ] );
-        if( !( bombs[ b ].owner == p->id && own_bomb_under( p, cs[ k ], rs[ k ] ) ) ) return true;
+        if( is_bomb( cs[ k ], rs[ k ] ) && !body_in_cell( p, cs[ k ], rs[ k ] ) ) return true;
     }
     return false;
 }

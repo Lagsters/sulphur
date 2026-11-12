@@ -109,8 +109,10 @@ bool step_ok( Player* p, int dx, int dy )
 
 int[ MAP_CELLS ] ft_from, ft_to, ft_mark;
 int ft_stamp = 0;
-int[ MAX_BOMB_LIST + 1 ] fb_c, fb_r, fb_len, fb_t;
+int[ MAX_BOMB_LIST + 1 ] fb_c, fb_r, fb_len, fb_t, fb_k;
 int fb_n = 0;
+// the chain reaction did not settle within the frame: the times are a guess, nothing is safe
+bool ft_unfinished = false;
 
 bool ft_has( int k ) { return ft_mark[ k ] == ft_stamp; }
 
@@ -149,6 +151,8 @@ void fire_times( bool extra, int ec, int er, int elen )
         fb_n++;
     }
     if( extra ) { fb_c[ fb_n ] = ec; fb_r[ fb_n ] = er; fb_len[ fb_n ] = elen; fb_t[ fb_n ] = BOMB_TIMER; fb_n++; }
+    for( int i = 0; i < fb_n; i++ ) fb_k[ i ] = cell( fb_c[ i ], fb_r[ i ] );
+    ft_unfinished = false;
     for( int i = 0; i < blast_count; i++ )
     {
         int k = cell( blasts[ i ].c, blasts[ i ].r );
@@ -173,16 +177,19 @@ void fire_times( bool extra, int ec, int er, int elen )
     while( changed )
     {
         changed = false;
+        if( out_of_time( BOT_FLEE_CYCLES ) ) { ft_unfinished = true; return; }
         for( int i = 0; i < fb_n; i++ )
         {
+            if( out_of_time( BOT_FLEE_CYCLES ) ) { ft_unfinished = true; return; }
             int t = fb_t[ i ];
             bomb_cells( fb_c[ i ], fb_r[ i ], fb_len[ i ] );
             for( int j = 0; j < line_n; j++ )
             {
                 int k = line_cells[ j ];
                 if( !ft_has( k ) || t < ft_from[ k ] || ft_to[ k ] < t + BLAST_TIME ) { ft_burn( k, t ); changed = true; }
-                for( int o = 0; o < fb_n; o++ )
-                  if( cell( fb_c[ o ], fb_r[ o ] ) == k && fb_t[ o ] > t ) { fb_t[ o ] = t; changed = true; }
+                if( bomb_cover[ k ] > 0 || k == fb_k[ fb_n - 1 ] )
+                  for( int o = 0; o < fb_n; o++ )
+                    if( fb_k[ o ] == k && fb_t[ o ] > t ) { fb_t[ o ] = t; changed = true; }
             }
         }
     }
@@ -208,8 +215,9 @@ int first_dir( int* parent, int start, int k )
     return -1;
 }
 
-bool burning( int k, int a ) { return ft_has( k ) && ft_from[ k ] <= a + BOT_STEP / 2 && ft_to[ k ] > a; }
-bool safe_end( int k, int a ) { return !ft_has( k ) || ft_to[ k ] <= a; }
+// a walking bot is in a cell from half a step before its centre to half a step after: a cell
+// it steps into must not burn in that window (escape_dir), and where it stops the fire must be out
+bool safe_end( int k, int a ) { return !ft_has( k ) || ft_to[ k ] <= a - BOT_STEP / 2; }
 
 // shortest way from (sc,sr) that never steps into a cell while it burns and ends on a cell
 // that is not burning when the bot gets there; uses the last fire_times()
@@ -221,6 +229,7 @@ int escape_dir( int* order, int sc, int sr, int blocked )
     eq[ tail ] = start; tail++; eseen[ start ] = estamp; edep[ start ] = 0;
     while( head < tail )
     {
+        if( out_of_time( BOT_FLEE_CYCLES ) ) return -1;
         int k = eq[ head ]; head++;
         int d0 = edep[ k ];
         if( d0 > 0 && safe_end( k, d0 * BOT_STEP ) )
@@ -228,10 +237,12 @@ int escape_dir( int* order, int sc, int sr, int blocked )
             path_end = k; path_len = d0;
             return first_dir( epar, start, k );
         }
+        int a = ( d0 + 1 ) * BOT_STEP;
         for( int i = 0; i < 4; i++ )
         {
             int nk = k + DIR_K[ order[ i ] ];
-            if( eseen[ nk ] == estamp || nk == blocked || !walkable_k( nk ) || burning( nk, ( d0 + 1 ) * BOT_STEP ) ) continue;
+            if( eseen[ nk ] == estamp || nk == blocked || map[ nk ] != T_EMPTY || bomb_cover[ nk ] != 0 ) continue;
+            if( ft_mark[ nk ] == ft_stamp && ft_from[ nk ] <= a + BOT_STEP / 2 && ft_to[ nk ] > a - BOT_STEP / 2 ) continue;
             eseen[ nk ] = estamp; epar[ nk ] = k; edep[ nk ] = d0 + 1;
             eq[ tail ] = nk; tail++;
         }
@@ -241,12 +252,17 @@ int escape_dir( int* order, int sc, int sr, int blocked )
 
 #define OPEN_ANY   0      // every walkable cell
 #define OPEN_SAFE  1      // walkable and out of danger for this player
+#define OPEN_COOL  2      // walkable and not burning or in a bomb's line (monsters allowed)
 
 // breadth-first search over the open cells to the nearest cell (not the start) accepted by
 // is_goal
 int path_dir( Player* p, int open, bool( Player*, int, int )* is_goal )
 {
     bstamp++;
+    int stamp = bstamp;
+    int* order = p->bot_order;
+    bool avoid_fire = open != OPEN_ANY;
+    bool avoid_foes = open == OPEN_SAFE && camp_mode && p->team == 1;
     int start = cell( p->c, p->r );
     int head = 0, tail = 0;
     bq[ tail ] = start; tail++; bseen[ start ] = bstamp; bdep[ start ] = 0;
@@ -259,12 +275,15 @@ int path_dir( Player* p, int open, bool( Player*, int, int )* is_goal )
             path_end = k; path_len = bdep[ k ];
             return first_dir( bpar, start, k );
         }
+        // the checks are written out: a call per neighbour costs more than the search itself
+        int depth = bdep[ k ] + 1;
         for( int i = 0; i < 4; i++ )
         {
-            int nk = k + DIR_K[ p->bot_order[ i ] ];
-            if( bseen[ nk ] == bstamp || !walkable_k( nk ) ) continue;
-            if( open == OPEN_SAFE && dangerous_k( p, nk ) ) continue;
-            bseen[ nk ] = bstamp; bpar[ nk ] = k; bdep[ nk ] = bdep[ k ] + 1;
+            int nk = k + DIR_K[ order[ i ] ];
+            if( bseen[ nk ] == stamp || map[ nk ] != T_EMPTY || bomb_cover[ nk ] != 0 ) continue;
+            if( avoid_fire && danger_mark[ nk ] == danger_stamp ) continue;
+            if( avoid_foes && hero_danger_mark[ nk ] == hero_danger_stamp ) continue;
+            bseen[ nk ] = stamp; bpar[ nk ] = k; bdep[ nk ] = depth;
             bq[ tail ] = nk; tail++;
         }
     }
@@ -317,6 +336,7 @@ bool bomb_safe( Player* p, int c, int r )
     safe_checks_left--;
     if( out_of_time( BOT_THINK_CYCLES ) ) return false;
     fire_times( true, c, r, p->stat_len );
+    if( ft_unfinished ) return false;
     return escape_dir( p->bot_order, c, r, -1 ) >= 0;
 }
 
@@ -338,10 +358,17 @@ bool trap_spot( Player* p, int c, int r )
 
 bool goal_out_of_danger( Player* p, int c, int r ) { return !dangerous( p, c, r ); }
 
-bool goal_item( Player* p, int c, int r )
+bool goal_quest_item( Player* p, int c, int r )
 {
     for( int i = 0; i < item_count; i++ )
-      if( items[ i ].c == c && items[ i ].r == r && ( p->team == 1 || !quest_item( items[ i ].kind ) ) ) return true;
+      if( items[ i ].c == c && items[ i ].r == r && quest_item( items[ i ].kind ) ) return true;
+    return false;
+}
+
+bool goal_bonus( Player* p, int c, int r )
+{
+    for( int i = 0; i < item_count; i++ )
+      if( items[ i ].c == c && items[ i ].r == r && !quest_item( items[ i ].kind ) ) return true;
     return false;
 }
 
@@ -374,9 +401,13 @@ int item_kind_at( int c, int r )
 int pickup_dir( Player* p )
 {
     if( item_count == 0 ) return -1;
-    int d = path_dir( p, OPEN_SAFE, &goal_item );
-    if( d < 0 ) return -1;
-    if( path_len <= BOT_PICKUP_RANGE || quest_item( item_kind_at( path_end % MAP_STRIDE, path_end / MAP_STRIDE ) ) ) return d;
+    if( p->team == 1 && camp_mode )
+    {
+        int q = path_dir( p, OPEN_SAFE, &goal_quest_item );
+        if( q >= 0 ) return q;
+    }
+    int d = path_dir( p, OPEN_SAFE, &goal_bonus );
+    if( d >= 0 && path_len <= BOT_PICKUP_RANGE ) return d;
     return -1;
 }
 
@@ -482,9 +513,10 @@ void bot_plan( Player* p )
         int d = escape_dir( p->bot_order, p->c, p->r, -1 );
         // the timed escape knows only bombs: if it ends next to a monster or in dragon fire,
         // head for a cell outside all danger instead
-        if( d < 0 || dangerous( p, path_end % MAP_STRIDE, path_end / MAP_STRIDE ) )
+        if( d < 0 || ft_unfinished || dangerous( p, path_end % MAP_STRIDE, path_end / MAP_STRIDE ) )
         {
-            int e = path_dir( p, OPEN_ANY, &goal_out_of_danger );
+            int e = path_dir( p, OPEN_COOL, &goal_out_of_danger );
+            if( e < 0 && d < 0 ) e = path_dir( p, OPEN_ANY, &goal_out_of_danger );
             if( e >= 0 ) d = e;
         }
         if( d < 0 ) d = rnd( 4 );

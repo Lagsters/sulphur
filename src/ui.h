@@ -23,6 +23,7 @@
 int state = ST_TITLE;
 int state_t = 0;
 bool paused = false;
+int paused_at = -1;     // the frame Start opened the pause: the same press must not close it
 int pause_sel = 0;
 int menu_sel = 0;
 int next_stage_after_scene = 0;     // 0: back to the title
@@ -31,6 +32,8 @@ bool sheep_hint_shown = false;
 int immune_hint_wait = 0;
 
 void enter( int s ) { state = s; state_t = 0; paused = false; }
+
+void pause_game() { paused = true; pause_sel = 0; paused_at = frame; ui_sound( UI_CONFIRM ); }
 
 bool pad_connected( int n ) { select_gamepad( n ); return gamepad_is_connected(); }
 
@@ -137,8 +140,9 @@ void title_frame()
         ui_sound( UI_CONFIRM );
         if( item == MENU_LANG ) { lang = 1 - lang; write_save(); return; }
         if( item == MENU_BATTLE ) { start_battle( false ); return; }
-        if( item == MENU_NEW ) { saved_stage = 0; write_save(); build_menu(); return; }
+        if( item == MENU_NEW ) { saved_stage = 0; write_save(); menu_sel = 0; build_menu(); return; }
         bool coop = item == MENU_STORY2 || item == MENU_CONTINUE2;
+        sheep_hint_shown = false;
         int from = pick( item == MENU_CONTINUE || item == MENU_CONTINUE2, saved_stage, 1 );
         start_campaign( coop, from );
         begin_stage_or_scene( from, coop );
@@ -285,7 +289,7 @@ void stage_frame()
     {
         update_campaign();
         stage_hints();
-        if( p1_pressed_start() ) { paused = true; pause_sel = 0; ui_sound( UI_CONFIRM ); }
+        if( p1_pressed_start() ) pause_game();
     }
     else if( !paused )
     {
@@ -301,7 +305,7 @@ void stage_frame()
     }
     if( hint >= 0 && hint_t > 0 && camp_state == CAMP_PLAY )
     {
-        hint_t--;
+        if( !paused ) hint_t--;
         int w = text_width( tr( hint ) );
         panel( 320 - w / 2 - 12, 316, w + 24, 32 );
         text_draw_centered( 320, 322, tr( hint ), 0xFF60E0FF );
@@ -334,7 +338,7 @@ void stage_frame()
         }
         begin_stage_or_scene( camp_stage + 1, camp_coop );
     }
-    else if( camp_state == CAMP_LOST ) { camp_tries++; start_stage( camp_stage ); enter( ST_STAGE ); state_t = 2; theme = stage.chapter - 1; }
+    else if( camp_state == CAMP_LOST ) { camp_tries++; start_stage( camp_stage ); enter( ST_STAGE ); }
     else enter( ST_TITLE );
 }
 
@@ -345,10 +349,12 @@ void stage_frame()
 void pause_menu()
 {
     dim( 150 );
+    bool fresh = frame == paused_at;
     panel( 220, 130, 200, 100 );
     text_draw_big( 320, 140, tr( STR_PAUSE ), color_white, 2 );
     text_draw_centered( 320, 180, tr( STR_RESUME ), pick( pause_sel == 0, color_white, 0xFF8090A0 ) );
     text_draw_centered( 320, 204, tr( STR_QUIT ), pick( pause_sel == 1, color_white, 0xFF8090A0 ) );
+    if( fresh ) return;
     if( p1_pressed_up() || p1_pressed_down() ) { pause_sel = 1 - pause_sel; ui_sound( UI_MOVE ); }
     if( p1_pressed_start() || p1_pressed_b() ) { paused = false; return; }
     if( p1_pressed_a() )
@@ -386,7 +392,7 @@ void battle_frame()
     if( !paused && round_over == 0 )
     {
         if( update_battle() ) round_over = ROUND_OVER_TIME;
-        if( !demo && p1_pressed_start() ) { paused = true; pause_sel = 0; }
+        if( !demo && p1_pressed_start() ) pause_game();
     }
     else if( !paused )
     {
@@ -437,7 +443,8 @@ void ui_init()
 
 void ui_frame()
 {
-    state_t++;
+    // the clocks of banners and hints stop while the game is paused
+    if( !paused ) state_t++;
     if( state == ST_TITLE ) title_frame();
     else if( state == ST_MAP ) map_frame();
     else if( state == ST_STAGE ) stage_frame();

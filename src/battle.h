@@ -22,8 +22,9 @@ void shrink_cell( int c, int r )
           monster_count--;
       }
     for( int i = item_count - 1; i >= 0; i-- ) if( items[ i ].c == c && items[ i ].r == r ) remove_item( i );
+    // the body, not only the centre: someone half out of the cell would be stuck in the wall
     for( int i = 0; i < player_count; i++ )
-      if( players[ i ].alive && players[ i ].c == c && players[ i ].r == r ) kill_player( &players[ i ] );
+      if( players[ i ].alive && body_in_cell( &players[ i ], c, r ) ) kill_player( &players[ i ] );
     for( int i = bomb_count - 1; i >= 0; i-- )
       if( bombs[ i ].c == c && bombs[ i ].r == r )
       {

@@ -18,6 +18,7 @@ void load_save()
     if( !card_is_connected() || !card_signature_matches( &save_signature ) ) return;
     card_read_data( save_data, SAVE_AT, SAVE_WORDS );
     saved_stage = save_data[ 0 ];
+    if( saved_stage < 0 || saved_stage > 30 ) saved_stage = 0;
     lang = save_data[ 1 ];
     if( lang != 1 ) lang = 0;
 }
