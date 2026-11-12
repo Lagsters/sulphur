@@ -27,7 +27,7 @@ import paint  # noqa: E402
 
 BLENDER = os.environ.get("BLENDER", r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe")
 RAW = ROOT / "build" / "art" / "story" / "raw"
-FONT = HERE / "CinzelDecorative-Black.ttf"
+FONT = HERE / "Cinzel-Black.ttf"
 # how many times larger than the final size Blender renders, per subject
 SCALE = {"bosses": 4, "title": 2, "maps": 2, "logo": 3}
 SOURCES = {"bosses": ["bosses.py"], "title": ["scenery.py", "bosses.py"], "maps": ["scenery.py"],

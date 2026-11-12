@@ -30,7 +30,7 @@ void define_sfx_regions()
 
 // ---- effect levels (tools/audio/make.py) ----
 
-#define SFX_GAIN 0.45
+#define SFX_GAIN 0.5
 // channel volume of each effect, times SFX_GAIN
 float[ 14 ] sfx_level =
 {

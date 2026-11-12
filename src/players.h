@@ -68,8 +68,9 @@ bool blocked_at( Player* p, int x, int y )
     {
         int t = mget( cs[ k ], rs[ k ] );
         if( t == T_WALL || t == T_BLOCK ) return true;
+        if( !is_bomb( cs[ k ], rs[ k ] ) ) continue;
         int b = bomb_at( cs[ k ], rs[ k ] );
-        if( b >= 0 && !( bombs[ b ].owner == p->id && own_bomb_under( p, cs[ k ], rs[ k ] ) ) ) return true;
+        if( !( bombs[ b ].owner == p->id && own_bomb_under( p, cs[ k ], rs[ k ] ) ) ) return true;
     }
     return false;
 }

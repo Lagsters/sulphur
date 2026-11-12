@@ -265,6 +265,10 @@ def convert(path=SONG, write=True):
                 events += [f | (typ << 16), w1]
     t.update(events=events + [0, 0], first=first, count=count, loop_ptr=loop_ptr)
     if write:
+        keep = {ROOT / p for _, p in sounds}
+        for old in (ROOT / "assets/music").glob("*.wav"):
+            if old not in keep:
+                old.unlink()
         pack_group("music", [], sounds)
         append_tables(t, len(m.instruments))
     for w, n in conv.warnings.items():

@@ -54,13 +54,13 @@ def width(x):
 
 
 def centroid_track(x, win=1.0):
-    """Spectral centroid (Hz) of each `win`-second window of the mid signal."""
+    """Spectral centroid (Hz, power-weighted) of each `win`-second window of the mid signal."""
     m = as_float(x).mean(axis=1)
     n = int(win * RATE)
     out = []
     freqs = np.fft.rfftfreq(n, 1 / RATE)
     for i in range(0, len(m) - n + 1, n):
-        spec = np.abs(np.fft.rfft(m[i:i + n] * np.hanning(n)))
+        spec = np.abs(np.fft.rfft(m[i:i + n] * np.hanning(n))) ** 2
         if spec.sum() > 1e-9:
             out.append(float((freqs * spec).sum() / spec.sum()))
     return out

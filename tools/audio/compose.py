@@ -65,8 +65,12 @@ def in_range(pc, lo):
     return lo + (pc - lo) % 12
 
 
+# the mix on top of equal loudness: a deep bass under the guitars, the kick a little back
+MIX = {"bass": 1.35, "pwr": 1.1, "mute": 1.1, "kick": 0.85, "hat": 0.8, "ohat": 0.8, "crash": 0.85}
+
+
 class Bank:
-    """Maps (instrument, MIDI note) to (global sample index, semitone offset)."""
+    """Each instrument's loudness, so that velocities sound alike across instruments."""
 
     def __init__(self, instruments):
         self.map = {}
@@ -84,16 +88,7 @@ class Bank:
         # scaled down against a sparse one (a bell) so that 100 sounds alike on both
         ref = float(np.median(list(rms.values())))
         for name, r in rms.items():
-            self.loudness[name] = float(np.clip(ref / r, 0.2, 1.6))
-
-    def pick(self, name, note):
-        options = self.map[name]
-        if len(options) == 1 and options[0][1] == 0:
-            return options[0][0], 0
-        best = min(options, key=lambda o: (abs(note - o[1]), -o[1]))
-        semi = note - best[1]
-        assert -24 <= semi <= 24, (name, note)
-        return best[0], semi
+            self.loudness[name] = float(np.clip(ref / r * MIX.get(name, 1.0), 0.2, 1.6))
 
 
 class Song:
@@ -109,9 +104,6 @@ class Song:
     @property
     def loop_frame(self):
         return self.loop_bar * self.spb * self.step
-
-    def frame(self, bar, s=0):
-        return int(round((bar * self.spb + s) * self.step))
 
     @property
     def rows(self):

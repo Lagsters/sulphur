@@ -98,8 +98,10 @@ Bomb[ MAX_BOMB_LIST ] bombs;
 int bomb_count = 0;
 Blast[ MAX_BLASTS ] blasts;
 int blast_count = 0;
-// how many blasts cover each cell, so the frequent "is there fire" is one lookup
+// how many blasts and bombs lie on each cell, so the frequent "is there fire / a bomb" is one
+// lookup (searches ask it for every cell they visit)
 int[ MAP_CELLS ] blast_cover;
+int[ MAP_CELLS ] bomb_cover;
 Item[ MAX_ITEMS ] items;
 int item_count = 0;
 // a quest item hidden under the crate on this cell (campaign)

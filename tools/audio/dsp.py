@@ -162,7 +162,7 @@ def cabinet(x):
     """A closed 4x12 cabinet with a dynamic microphone: tight lows, a bump at 110 Hz, scooped
     low mids, presence at 2.5 kHz and a steep roll-off above 5 kHz."""
     y = hp(x, 70, 2)
-    y = eq(y, [("peak", 110, 1.1, 4.0), ("peak", 450, 0.9, -4.5), ("peak", 2400, 1.2, 3.5),
+    y = eq(y, [("peak", 120, 1.0, 6.0), ("peak", 450, 0.9, -4.5), ("peak", 2400, 1.2, 3.5),
                ("notch", 6800, 2.0, 0)])
     return lp(y, 5200, 6)
 

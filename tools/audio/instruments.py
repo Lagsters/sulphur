@@ -76,7 +76,7 @@ def _power_take(root, dur, muted, seed, detune_c, strum_ms):
         x[at:] += s[:n - at] * (1.0 if k == 0 else 0.85)
     x /= np.abs(x).max()
     # the pedal before the amp: tight lows, a mid hump
-    x = dsp.eq(x, [("hp", 110, 0.7, 0), ("peak", 720, 0.8, 5.0)])
+    x = dsp.eq(x, [("hp", 75, 0.7, 0), ("peak", 720, 0.8, 4.0)])
     y = dsp.tube(x * 0.7, 28.0 if not muted else 22.0, bias=0.22)
     y = dsp.cabinet(y)
     if muted:
@@ -165,8 +165,8 @@ def bass_guitar(m, seed):
 def kick(seed):
     r = dsp.rng(seed)
     t = dsp.seconds(0.55)
-    f = 46 + 120 * np.exp(-t / 0.03)
-    body = np.sin(2 * np.pi * np.cumsum(f) / RATE) * np.exp(-t / 0.26)
+    f = 56 + 110 * np.exp(-t / 0.028)
+    body = np.sin(2 * np.pi * np.cumsum(f) / RATE) * np.exp(-t / 0.2)
     click = dsp.hp(r.standard_normal(len(t)), 2500, 2) * np.exp(-t / 0.004) * 0.45
     beater = np.sin(2 * np.pi * 3200 * t) * np.exp(-t / 0.006) * 0.2
     x = np.tanh(1.8 * (body + click + beater))

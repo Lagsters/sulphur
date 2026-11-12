@@ -59,7 +59,11 @@ int bomb_at( int c, int r )
     return -1;
 }
 
-bool is_bomb( int c, int r ) { return bomb_at( c, r ) >= 0; }
+bool is_bomb( int c, int r )
+{
+    if( c < 0 || r < 0 || c >= W || r >= H ) return false;
+    return bomb_cover[ cell( c, r ) ] > 0;
+}
 
 void add_bomb( int c, int r, int t, int len, int owner, bool sheep )
 {
@@ -67,10 +71,12 @@ void add_bomb( int c, int r, int t, int len, int owner, bool sheep )
     Bomb* b = &bombs[ bomb_count ];
     b->c = c; b->r = r; b->t = t; b->len = len; b->owner = owner; b->sheep = sheep;
     bomb_count++;
+    bomb_cover[ cell( c, r ) ]++;
 }
 
 void remove_bomb( int i )
 {
+    bomb_cover[ cell( bombs[ i ].c, bombs[ i ].r ) ]--;
     for( int k = i; k < bomb_count - 1; k++ ) bombs[ k ] = bombs[ k + 1 ];
     bomb_count--;
 }

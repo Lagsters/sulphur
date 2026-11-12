@@ -48,6 +48,7 @@ void update_shrink()
 void clear_round()
 {
     bomb_count = 0; blast_count = 0; item_count = 0; monster_count = 0;
+    for( int i = 0; i < MAP_CELLS; i++ ) { blast_cover[ i ] = 0; bomb_cover[ i ] = 0; }
     boss.kind = BOSS_NONE;
     for( int i = 0; i < MAX_SHEEP; i++ ) sheep[ i ].alive = false;
     cam_x = 0; cam_y = 0;
@@ -88,7 +89,6 @@ void update_human( Player* p );
 void update_players()
 {
     bot_plans_left = BOT_PLANS;
-    walker_searches_left = 1;
     compute_danger();
     // bots take turns at being first, so the planning budget is shared fairly
     for( int k = 0; k < player_count; k++ )

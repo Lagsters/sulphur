@@ -383,7 +383,7 @@ void sound_frame()
         {
             c = sfx_channel();
             sfx_started[ c - SFX_FIRST ] = sfx_clock;
-            sfx_play( effect, sfx_level[ effect ] * SFX_GAIN * 0.6, speed * 0.92, c );
+            sfx_play( effect, sfx_level[ effect ] * SFX_GAIN * 0.5, speed * 0.92, c );
         }
         if( sfx_ducks[ effect ] ) mus_duck = 0.55;
     }

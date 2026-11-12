@@ -16,8 +16,8 @@
 // Drawing takes up to ~90 000 (measured in the dragon fight) and the music ~10 000.
 #define BOT_THINK_CYCLES  80000
 #define BOT_FLEE_CYCLES   105000
-// searches of monsters and lit sheep: at most one a frame, and only early in it
-int walker_searches_left = 1;
+// bats look for a hero at most once a frame, and only early in it
+int bat_searches_left = 1;
 
 bool out_of_time( int limit ) { return get_cycle_counter() > limit; }
 
@@ -75,14 +75,26 @@ void compute_danger()
     }
 }
 
-bool dangerous( Player* p, int c, int r )
+bool dangerous_k( Player* p, int k )
 {
-    int k = cell( c, r );
     if( danger_mark[ k ] == danger_stamp ) return true;
     return camp_mode && p->team == 1 && hero_danger_mark[ k ] == hero_danger_stamp;
 }
 
-bool bot_passable( int c, int r ) { return mget( c, r ) == T_EMPTY && !is_bomb( c, r ); }
+bool dangerous( Player* p, int c, int r ) { return dangerous_k( p, cell( c, r ) ); }
+
+// by cell index: the searches visit every cell, and a call per check costs more than the check
+bool walkable_k( int k ) { return map[ k ] == T_EMPTY && bomb_cover[ k ] == 0; }
+
+bool bot_passable( int c, int r )
+{
+    if( c < 0 || r < 0 || c >= W || r >= H ) return false;
+    return walkable_k( cell( c, r ) );
+}
+
+// a step in direction d is this many cells in the map arrays; the searches never leave the
+// arena, whose border is wall
+int[ 4 ] DIR_K = { -MAP_STRIDE, MAP_STRIDE, -1, 1 };
 
 bool step_ok( Player* p, int dx, int dy )
 {
@@ -216,13 +228,10 @@ int escape_dir( int* order, int sc, int sr, int blocked )
             path_end = k; path_len = d0;
             return first_dir( epar, start, k );
         }
-        int c = k % MAP_STRIDE, r = k / MAP_STRIDE;
         for( int i = 0; i < 4; i++ )
         {
-            int d = order[ i ];
-            int nc = c + DIR_X[ d ], nr = r + DIR_Y[ d ];
-            int nk = cell( nc, nr );
-            if( eseen[ nk ] == estamp || nk == blocked || !bot_passable( nc, nr ) || burning( nk, ( d0 + 1 ) * BOT_STEP ) ) continue;
+            int nk = k + DIR_K[ order[ i ] ];
+            if( eseen[ nk ] == estamp || nk == blocked || !walkable_k( nk ) || burning( nk, ( d0 + 1 ) * BOT_STEP ) ) continue;
             eseen[ nk ] = estamp; epar[ nk ] = k; edep[ nk ] = d0 + 1;
             eq[ tail ] = nk; tail++;
         }
@@ -230,9 +239,12 @@ int escape_dir( int* order, int sc, int sr, int blocked )
     return -1;
 }
 
-// breadth-first search over cells accepted by is_open to the nearest cell (not the start)
-// accepted by is_goal
-int path_dir( Player* p, bool( Player*, int, int )* is_open, bool( Player*, int, int )* is_goal )
+#define OPEN_ANY   0      // every walkable cell
+#define OPEN_SAFE  1      // walkable and out of danger for this player
+
+// breadth-first search over the open cells to the nearest cell (not the start) accepted by
+// is_goal
+int path_dir( Player* p, int open, bool( Player*, int, int )* is_goal )
 {
     bstamp++;
     int start = cell( p->c, p->r );
@@ -242,18 +254,16 @@ int path_dir( Player* p, bool( Player*, int, int )* is_open, bool( Player*, int,
     {
         if( out_of_time( BOT_FLEE_CYCLES ) ) return -1;
         int k = bq[ head ]; head++;
-        int c = k % MAP_STRIDE, r = k / MAP_STRIDE;
-        if( k != start && is_goal( p, c, r ) )
+        if( k != start && is_goal( p, k % MAP_STRIDE, k / MAP_STRIDE ) )
         {
             path_end = k; path_len = bdep[ k ];
             return first_dir( bpar, start, k );
         }
         for( int i = 0; i < 4; i++ )
         {
-            int d = p->bot_order[ i ];
-            int nc = c + DIR_X[ d ], nr = r + DIR_Y[ d ];
-            int nk = cell( nc, nr );
-            if( bseen[ nk ] == bstamp || !is_open( p, nc, nr ) ) continue;
+            int nk = k + DIR_K[ p->bot_order[ i ] ];
+            if( bseen[ nk ] == bstamp || !walkable_k( nk ) ) continue;
+            if( open == OPEN_SAFE && dangerous_k( p, nk ) ) continue;
             bseen[ nk ] = bstamp; bpar[ nk ] = k; bdep[ nk ] = bdep[ k ] + 1;
             bq[ tail ] = nk; tail++;
         }
@@ -326,8 +336,6 @@ bool trap_spot( Player* p, int c, int r )
     return false;
 }
 
-bool open_safe( Player* p, int c, int r ) { return bot_passable( c, r ) && !dangerous( p, c, r ); }
-bool open_any( Player* p, int c, int r ) { return bot_passable( c, r ); }
 bool goal_out_of_danger( Player* p, int c, int r ) { return !dangerous( p, c, r ); }
 
 bool goal_item( Player* p, int c, int r )
@@ -366,7 +374,7 @@ int item_kind_at( int c, int r )
 int pickup_dir( Player* p )
 {
     if( item_count == 0 ) return -1;
-    int d = path_dir( p, &open_safe, &goal_item );
+    int d = path_dir( p, OPEN_SAFE, &goal_item );
     if( d < 0 ) return -1;
     if( path_len <= BOT_PICKUP_RANGE || quest_item( item_kind_at( path_end % MAP_STRIDE, path_end / MAP_STRIDE ) ) ) return d;
     return -1;
@@ -405,9 +413,8 @@ int quest_dir( Player* p )
         }
         for( int i = 0; i < 4; i++ )
         {
-            int nc = c + DIR_X[ i ], nr = r + DIR_Y[ i ];
-            int nk = cell( nc, nr );
-            if( bseen[ nk ] == bstamp || !open_safe( p, nc, nr ) ) continue;
+            int nk = k + DIR_K[ i ];
+            if( bseen[ nk ] == bstamp || !walkable_k( nk ) || dangerous_k( p, nk ) ) continue;
             bseen[ nk ] = bstamp;
             bq[ tail ] = nk; tail++;
         }
@@ -421,7 +428,7 @@ int quest_dir( Player* p )
         if( !bomb_safe( p, k % MAP_STRIDE, k / MAP_STRIDE ) ) continue;
         if( k == start ) return -1;
         quest_goal = k;
-        return path_dir( p, &open_safe, &goal_cell );
+        return path_dir( p, OPEN_SAFE, &goal_cell );
     }
     return -1;
 }
@@ -477,7 +484,7 @@ void bot_plan( Player* p )
         // head for a cell outside all danger instead
         if( d < 0 || dangerous( p, path_end % MAP_STRIDE, path_end / MAP_STRIDE ) )
         {
-            int e = path_dir( p, &open_any, &goal_out_of_danger );
+            int e = path_dir( p, OPEN_ANY, &goal_out_of_danger );
             if( e >= 0 ) d = e;
         }
         if( d < 0 ) d = rnd( 4 );
@@ -488,7 +495,7 @@ void bot_plan( Player* p )
     if( camp_mode && p->team == 1 && dragon_alive() )
     {
         if( p->sheep > 0 ) launch_sheep( p );
-        int s = path_dir( p, &open_safe, &goal_grazing_sheep );
+        int s = path_dir( p, OPEN_SAFE, &goal_grazing_sheep );
         if( s >= 0 ) { set_bot_dir( p, s ); return; }
     }
     if( try_bomb( p ) ) { set_bot_dir( p, 4 ); return; }
@@ -497,9 +504,9 @@ void bot_plan( Player* p )
     {
         // hunt: walk to a cell from which a bomb is safe to lay, enemies before blocks
         if( camp_mode && p->team == 1 ) { safe_checks_left = BOT_SAFE_CHECKS; d = quest_dir( p ); }
-        if( d < 0 ) { safe_checks_left = BOT_SAFE_CHECKS; d = path_dir( p, &open_safe, &goal_trap ); }
-        if( d < 0 ) { safe_checks_left = BOT_SAFE_CHECKS; d = path_dir( p, &open_safe, &goal_enemy ); }
-        if( d < 0 ) { safe_checks_left = BOT_SAFE_CHECKS; d = path_dir( p, &open_safe, &goal_target ); }
+        if( d < 0 ) { safe_checks_left = BOT_SAFE_CHECKS; d = path_dir( p, OPEN_SAFE, &goal_trap ); }
+        if( d < 0 ) { safe_checks_left = BOT_SAFE_CHECKS; d = path_dir( p, OPEN_SAFE, &goal_enemy ); }
+        if( d < 0 ) { safe_checks_left = BOT_SAFE_CHECKS; d = path_dir( p, OPEN_SAFE, &goal_target ); }
     }
     if( d >= 0 ) { set_bot_dir( p, d ); p->bot_dir_timer = 0; return; }
     // nothing to hunt: wander in a safe direction, re-picked on a timer or when stuck

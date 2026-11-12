@@ -54,7 +54,7 @@ bool is_pillar( int c, int r )
 
 void init_map()
 {
-    for( int i = 0; i < MAP_CELLS; i++ ) { map[ i ] = T_WALL; hidden[ i ] = ITEM_NONE; blast_cover[ i ] = 0; }
+    for( int i = 0; i < MAP_CELLS; i++ ) { map[ i ] = T_WALL; hidden[ i ] = ITEM_NONE; blast_cover[ i ] = 0; bomb_cover[ i ] = 0; }
     for( int r = 0; r < H; r++ )
       for( int c = 0; c < W; c++ )
       {

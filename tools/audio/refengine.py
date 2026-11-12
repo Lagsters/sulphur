@@ -106,21 +106,12 @@ class Engine:
         self.duck = F(1.0)
         self.master = F(0.0)
         V = 12
-        self.ptr = [0] * V
-        self.end = [0] * V
-        self.next = [NEVER] * V
-        self.state = [0] * V
-        self.left = [0] * V
-        self.age = [0] * V
-        self.vib = [0] * V
-        self.old = [False] * V
-        self.env = [F(0)] * V
-        self.k = [F(0)] * V
-        self.sus = [F(0)] * V
-        self.rel = [F(0)] * V
-        self.gain = [F(0)] * V
-        self.base = [F(1)] * V
-        self.bend = [F(1)] * V
+        self.ptr, self.end, self.next = [0] * V, [0] * V, [NEVER] * V
+        self.on, self.released, self.old, self.shifted = [False] * V, [False] * V, [False] * V, [False] * V
+        self.note, self.vol, self.envp, self.envend, self.envsus = [0] * V, [0] * V, [0] * V, [0] * V, [0] * V
+        self.fx, self.p1, self.p2, self.tick, self.vib_pos = [0] * V, [0] * V, [0] * V, [0] * V, [0] * V
+        self.base, self.pitch, self.vib = [F(1)] * V, [F(0)] * V, [F(0)] * V
+        self.kfade, self.fadeout, self.oldgain = [F(1)] * V, [F(0)] * V, [F(0)] * V
         self.sfx_started = [-1000] * 3
         self.sfx_clock = 0
         self.sfx_seed = 12345
@@ -136,8 +127,8 @@ class Engine:
 
     def release_all(self):
         for v in range(12):
-            if self.state[v] != 0 and not self.old[v]:
-                self.gain[v] = F(self.gain[v] * self.master)
+            if self.on[v] and not self.old[v]:
+                self.oldgain[v] = self.master
                 self.old[v] = True
 
     def music_play(self, song):
@@ -155,26 +146,63 @@ class Engine:
         self.song = -1
         self.next = [NEVER] * 12
 
-    def trigger(self, v, w0, w1):
+    def level(self, v):
+        d = self.d
+        return F(F(F(d["env"][self.envp[v]] * self.kfade[v]) * F(self.vol[v])) * d["vol_scale"])
+
+    def start(self, v, w1):
         d, spu = self.d, self.spu
         smp = w1 & 255
-        env = (w1 >> 22) & 15
-        self.base[v] = F(d["semi"][(w1 >> 8) & 127] * d["sample_speed"][smp])
-        self.bend[v] = d["bend_start"][(w1 >> 28) & 3]
-        self.vib[v] = (w1 >> 26) & 3
-        self.gain[v] = F(F((w1 >> 15) & 127) * d["vel_scale"])
-        self.env[v] = d["env_start"][env]
-        self.k[v] = d["env_k"][env]
-        self.sus[v] = d["env_sus"][env]
-        self.rel[v] = d["env_rel"][env]
-        self.left[v] = (w0 >> 16) & 32767
-        self.age[v] = 0
-        self.state[v] = 1
+        ins = (w1 >> 22) & 31
+        self.note[v] = (w1 >> 8) & 127
+        self.vol[v] = (w1 >> 15) & 127
+        self.base[v] = F(d["semi"][self.note[v]] * d["sample_speed"][smp])
+        self.pitch[v] = F(0.0)
+        self.vib[v] = F(0.0)
+        self.vib_pos[v] = 0
+        self.shifted[v] = False
+        self.envp[v] = d["env_first"][ins]
+        self.envend[v] = d["env_first"][ins] + d["env_len"][ins] - 1
+        self.envsus[v] = d["env_first"][ins] + d["env_sus"][ins]
+        if d["env_sus"][ins] < 0:
+            self.envsus[v] = -1
+        self.kfade[v] = F(1.0)
+        self.fadeout[v] = d["fadeout"][ins]
+        self.released[v] = False
+        self.on[v] = True
         self.old[v] = False
         spu.stop(v)
-        spu.speed(v, F(self.base[v] * self.bend[v]))
-        spu.volume(v, F(F(self.env[v] * self.gain[v]) * self.master))
+        spu.speed(v, self.base[v])
+        spu.volume(v, F(self.level(v) * self.master))
         spu.play(d["snd_base"] + smp, v)
+
+    def effect(self, v):
+        d = self.d
+        fx = self.fx[v]
+        self.tick[v] += 1
+        if fx == 1:
+            self.vol[v] = min(max(self.vol[v] + self.p1[v] - self.p2[v], 0), 64)
+        elif fx == 2:
+            self.vib_pos[v] = (self.vib_pos[v] + self.p1[v]) & 63
+            self.vib[v] = F(F(d["sine"][self.vib_pos[v]] * F(self.p2[v])) * F(8.0))
+        elif fx == 3:
+            target = F(F(self.p2[v] - self.note[v]) * F(64.0))
+            step = F(F(self.p1[v]) * F(4.0))
+            if self.pitch[v] < target:
+                self.pitch[v] = F(self.pitch[v] + step)
+                if self.pitch[v] > target:
+                    self.pitch[v] = target
+            else:
+                self.pitch[v] = F(self.pitch[v] - step)
+                if self.pitch[v] < target:
+                    self.pitch[v] = target
+        elif fx == 4:
+            self.pitch[v] = F(self.pitch[v] + F(F(self.p1[v]) * F(4.0)))
+        elif fx == 5:
+            self.pitch[v] = F(self.pitch[v] - F(F(self.p1[v]) * F(4.0)))
+        elif fx == 6:
+            if self.tick[v] == self.p1[v]:
+                self.vol[v] = 0
 
     def music_update(self):
         d, spu = self.d, self.spu
@@ -190,48 +218,61 @@ class Engine:
             self.master = F(F(d["song_gain"][self.song] * self.fade) * self.duck)
         ev = d["events"]
         for v in range(12):
-            if self.time == self.next[v]:
+            fresh = 0
+            while self.time == self.next[v]:
                 at = self.ptr[v] * 2
-                self.trigger(v, ev[at], ev[at + 1])
+                w1 = ev[at + 1]
+                kind = (ev[at] >> 16) & 3
+                if kind == 0:
+                    self.start(v, w1)
+                    fresh = 1
+                elif kind == 1:
+                    self.released[v] = True
+                elif kind == 2:
+                    self.vol[v] = w1
+                else:
+                    if self.fx[v] == 2:
+                        self.vib[v] = F(0.0)
+                    self.fx[v] = w1 & 15
+                    self.p1[v] = (w1 >> 4) & 255
+                    self.p2[v] = (w1 >> 12) & 255
+                    self.tick[v] = 0
+                    if fresh == 0:
+                        fresh = 2
                 self.ptr[v] += 1
                 self.next[v] = ev[at + 2] & 0xFFFF if self.ptr[v] < self.end[v] else NEVER
+            if not self.on[v] or fresh == 1:
                 continue
-            st = self.state[v]
-            if st == 0:
-                continue
-            if st == 1:
-                self.env[v] = F(self.sus[v] + F(F(self.env[v] - self.sus[v]) * self.k[v]))
-                self.left[v] -= 1
-                if self.left[v] <= 0:
-                    self.state[v] = 2
-            else:
-                self.env[v] = F(self.env[v] * self.rel[v])
-                if self.env[v] < F(0.003):
+            if fresh == 0 and not self.old[v]:
+                self.effect(v)
+            if self.released[v]:
+                if self.envp[v] < self.envend[v]:
+                    self.envp[v] += 1
+                self.kfade[v] = F(self.kfade[v] - self.fadeout[v])
+                if self.kfade[v] < F(0.0):
+                    self.kfade[v] = F(0.0)
+                if (self.envp[v] == self.envend[v] and d["env"][self.envp[v]] < F(0.002)) or self.kfade[v] <= F(0.0):
                     spu.stop(v)
-                    self.state[v] = 0
+                    self.on[v] = False
                     continue
+            elif self.envp[v] != self.envsus[v] and self.envp[v] < self.envend[v]:
+                self.envp[v] += 1
             if self.old[v]:
-                self.gain[v] = F(self.gain[v] * F(0.92))
-                if self.gain[v] < F(0.0005):
+                self.oldgain[v] = F(self.oldgain[v] * F(0.92))
+                if self.oldgain[v] < F(0.0005):
                     spu.stop(v)
-                    self.state[v] = 0
+                    self.on[v] = False
                     continue
-                spu.volume(v, F(F(self.env[v] * self.gain[v]) * self.duck))
+                spu.volume(v, F(F(self.level(v) * self.oldgain[v]) * self.duck))
             else:
-                spu.volume(v, F(F(self.env[v] * self.gain[v]) * self.master))
-            self.age[v] += 1
-            bent = False
-            if self.bend[v] < F(1.0):
-                self.bend[v] = F(F(1.0) - F(F(F(1.0) - self.bend[v]) * F(0.72)))
-                if self.bend[v] > F(0.9995):
-                    self.bend[v] = F(1.0)
-                bent = True
-            if self.vib[v] > 0 and self.age[v] > 10:
-                depth = F(d["vib_depth"][self.vib[v]] * min(F(1.0), F(F(self.age[v] - 10) * F(0.0666667))))
-                wobble = F(F(1.0) + F(depth * np.sin(F(F(self.age[v]) * F(0.576)))))
-                spu.speed(v, F(F(self.base[v] * self.bend[v]) * wobble))
-            elif bent:
-                spu.speed(v, F(self.base[v] * self.bend[v]))
+                spu.volume(v, F(self.level(v) * self.master))
+            shift = F(self.pitch[v] + self.vib[v])
+            if shift != F(0.0):
+                spu.speed(v, F(self.base[v] * np.power(F(2.0), F(shift * F(0.00130208333)))))
+                self.shifted[v] = True
+            elif self.shifted[v]:
+                spu.speed(v, self.base[v])
+                self.shifted[v] = False
         if self.song != -1:
             self.time += 1
             if self.time >= d["length"][self.song]:
@@ -269,7 +310,7 @@ class Engine:
             if n > 1:
                 c = self.sfx_channel()
                 self.sfx_started[c - 12] = self.sfx_clock
-                self.sfx_play(effect, F(F(d["sfx_level"][effect] * d["sfx_gain"]) * F(0.6)), F(speed * F(0.92)), c)
+                self.sfx_play(effect, F(F(d["sfx_level"][effect] * d["sfx_gain"]) * F(0.5)), F(speed * F(0.92)), c)
             if d["sfx_ducks"][effect]:
                 self.duck = F(0.55)
         self.music_update()

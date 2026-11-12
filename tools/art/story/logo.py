@@ -1,5 +1,6 @@
-"""The SULPHUR logo: heavy gilded letters in Cinzel Decorative Black (SIL OFL 1.1), extruded and
-bevelled, lit like polished gold over dark stone (runs inside Blender)."""
+"""The SULPHUR logo: heavy gilded letters in Cinzel Black (SIL OFL 1.1, the variable font
+instanced at weight 900), extruded and bevelled, lit like polished gold over dark stone (runs inside
+Blender). Not Cinzel Decorative: its swash L reads as an I, so the word looked like "SUIPHUR"."""
 import math
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import bpy
 import blib
 from blib import material
 
-FONT = Path(__file__).resolve().parent / "CinzelDecorative-Black.ttf"
+FONT = Path(__file__).resolve().parent / "Cinzel-Black.ttf"
 
 
 def render_logo(out, scale):
