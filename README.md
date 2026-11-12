@@ -10,7 +10,9 @@ An arena game for the [Vircon32](https://www.vircon32.com/) fantasy console, a f
   can hurt: catch one, then let it go at the dragon.
 
 Graphics are modelled and rendered in Blender and brought down to the Amiga's 12-bit colour; the
-music is synthesized and played by a tracker on the console's 16 channels. English and Polish.
+music is synthesized and played by a tracker on the console's 16 channels. The songs live in one
+FastTracker 2 module, `assets/music/songs/sulphur.xm` (ten subsongs, stereo samples in OpenMPT's
+XM extension), which `tools/audio/make.py` converts for the console. English and Polish.
 
 ## Controls
 

@@ -47,7 +47,7 @@ Rozstrzygają każdy spór, w tej kolejności.
 | `python tools/strings.py` | teksty interfejsu EN/PL → `src/gen/strings.h` |
 | `python tools/art/game/make.py`, `tools/art/story/make.py`, `tools/scenes/make.py` | grafika (Blender) |
 | `python tools/font/make.py` | czcionki |
-| `python tools/audio/make.py` | muzyka i efekty |
+| `python tools/audio/make.py` | muzyka i efekty z modułu `assets/music/songs/sulphur.xm` (źródło prawdy, edytowalne w OpenMPT); `--compose` generuje moduł od nowa i **nadpisuje ręczne zmiany w trackerze** |
 | `python tools/web/build.py` | wersja webowa → `build/web/` |
 
 Windows: kompilator runnera to WinLibs (`winget install BrechtSanders.WinLibs.POSIX.UCRT`).
