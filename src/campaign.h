@@ -110,14 +110,20 @@ int pop_far_free()
 // items the goal needs, under crates when there are enough of them, else on the floor
 void hide_items( int kind, int n )
 {
-    for( int i = 0; i < n; i++ )
+    far_cells( T_BLOCK, ( W + H ) / 4 );
+    int i = 0;
+    while( i < n && far_n > 0 )
     {
-        far_cells( T_BLOCK, ( W + H ) / 4 );
-        int k = -1;
-        while( far_n > 0 ) { far_n--; if( hidden[ far_list[ far_n ] ] == ITEM_NONE ) { k = far_list[ far_n ]; break; } }
-        if( k >= 0 ) { hidden[ k ] = kind; continue; }
-        far_cells( T_EMPTY, ( W + H ) / 4 );
-        k = pop_far_free();
+        far_n--;
+        if( hidden[ far_list[ far_n ] ] != ITEM_NONE ) continue;
+        hidden[ far_list[ far_n ] ] = kind;
+        i++;
+    }
+    if( i == n ) return;
+    far_cells( T_EMPTY, ( W + H ) / 4 );
+    for( ; i < n; i++ )
+    {
+        int k = pop_far_free();
         if( k >= 0 ) add_item( k % MAP_STRIDE, k / MAP_STRIDE, kind );
     }
 }
@@ -162,7 +168,7 @@ void spawn_sheep_far()
     spawn_sheep( pop_far_free() );
 }
 
-// a sheep in a blast or under a closing wall goes off: sulphur is sulphur
+// a sheep in a blast goes off: sulphur is sulphur (a closing wall only crushes it)
 void sheep_goes_off( Sheep* s )
 {
     s->alive = false;
@@ -308,14 +314,17 @@ void update_sheep()
                 continue;
             }
             if( s->t <= 0 || !dragon_alive() ) { sheep_goes_off( s ); continue; }
-            if( centred )
+            if( centred && walker_searches_left > 0 && !out_of_time( BOT_FLEE_CYCLES ) )
             {
+                walker_searches_left--;
                 sheep_walker.c = s->c; sheep_walker.r = s->r; sheep_walker.team = 1;
                 for( int k = 0; k < 4; k++ ) sheep_walker.bot_order[ k ] = k;
                 int d = path_dir( &sheep_walker, &open_any, &goal_beside_dragon );
                 s->dx = 0; s->dy = 0;
                 if( d >= 0 ) { s->dx = DIR_X[ d ]; s->dy = DIR_Y[ d ]; }
             }
+            // without a fresh search it keeps its way, but never into a crate or a bomb
+            if( centred && !bot_passable( s->c + s->dx, s->r + s->dy ) ) { s->dx = 0; s->dy = 0; }
             for( int k = 0; k < 2; k++ )
             {
                 if( k > 0 && s->x == gpx( s->c ) && s->y == gpy( s->r ) ) break;
@@ -367,11 +376,16 @@ void update_monsters()
             {
                 if( m->kind == MON_BAT )
                 {
-                    monster_walker.c = m->c; monster_walker.r = m->r; monster_walker.team = 2;
-                    for( int k = 0; k < 4; k++ ) monster_walker.bot_order[ k ] = k;
-                    int d = path_dir( &monster_walker, &open_any, &goal_hero );
-                    m->dx = 0; m->dy = 0;
-                    if( d >= 0 ) { m->dx = DIR_X[ d ]; m->dy = DIR_Y[ d ]; }
+                    // a bat looks for the nearest hero when the frame has time; else it flies on
+                    if( walker_searches_left > 0 && !out_of_time( BOT_THINK_CYCLES ) )
+                    {
+                        walker_searches_left--;
+                        monster_walker.c = m->c; monster_walker.r = m->r; monster_walker.team = 2;
+                        for( int k = 0; k < 4; k++ ) monster_walker.bot_order[ k ] = k;
+                        int d = path_dir( &monster_walker, &open_any, &goal_hero );
+                        m->dx = 0; m->dy = 0;
+                        if( d >= 0 ) { m->dx = DIR_X[ d ]; m->dy = DIR_Y[ d ]; }
+                    }
                 }
                 else if( rnd( 100 ) < 15 || !bot_passable( m->c + m->dx, m->r + m->dy ) || ( m->dx == 0 && m->dy == 0 ) )
                 {

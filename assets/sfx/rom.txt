@@ -1,0 +1,14 @@
+sound assets/sfx/bomb.wav
+sound assets/sfx/boom.wav
+sound assets/sfx/pickup.wav
+sound assets/sfx/death.wav
+sound assets/sfx/shield.wav
+sound assets/sfx/baa.wav
+sound assets/sfx/sheep_boom.wav
+sound assets/sfx/boss_hit.wav
+sound assets/sfx/fire.wav
+sound assets/sfx/wall.wav
+sound assets/sfx/roar.wav
+sound assets/sfx/ui_move.wav
+sound assets/sfx/ui_confirm.wav
+sound assets/sfx/ui_type.wav

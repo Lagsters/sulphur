@@ -12,10 +12,12 @@
 #define BOT_PLANS         2       // bots planning in one frame
 #define BOT_SAFE_CHECKS   6       // bomb-safety checks one search may spend
 #define FOREVER           1000000
-// cycles of the frame (250 000) bots may use before planning stops; fleeing may run longer,
-// the rest is left for drawing
-#define BOT_THINK_CYCLES  140000
-#define BOT_FLEE_CYCLES   180000
+// cycles of the frame (250 000) bots may use before planning stops; fleeing may run longer.
+// Drawing takes up to ~90 000 (measured in the dragon fight) and the music ~10 000.
+#define BOT_THINK_CYCLES  80000
+#define BOT_FLEE_CYCLES   105000
+// searches of monsters and lit sheep: at most one a frame, and only early in it
+int walker_searches_left = 1;
 
 bool out_of_time( int limit ) { return get_cycle_counter() > limit; }
 
@@ -392,6 +394,7 @@ int quest_dir( Player* p )
     bq[ tail ] = start; tail++; bseen[ start ] = bstamp;
     while( head < tail )
     {
+        if( out_of_time( BOT_THINK_CYCLES ) ) break;
         int k = bq[ head ]; head++;
         int c = k % MAP_STRIDE, r = k / MAP_STRIDE;
         if( target_spot( p, c, r ) )
@@ -440,8 +443,12 @@ void set_bot_dir( Player* p, int d )
     p->bot_dir_x = DIR_X[ d ]; p->bot_dir_y = DIR_Y[ d ];
 }
 
+// the zone has stopped long ago and the round goes nowhere: bombs without a way out
+bool desperate() { return !camp_mode && zone_done_at >= 0 && round_frames - zone_done_at > DESPERATE_AFTER; }
+
 bool try_bomb( Player* p )
 {
+    if( desperate() && enemy_spot( p, p->c, p->r ) ) return place_bomb( p );
     if( !target_spot( p, p->c, p->r ) ) return false;
     safe_checks_left = 1;
     if( !bomb_safe( p, p->c, p->r ) ) return false;

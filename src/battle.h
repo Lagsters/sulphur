@@ -27,7 +27,7 @@ void shrink_cell( int c, int r )
     for( int i = bomb_count - 1; i >= 0; i-- )
       if( bombs[ i ].c == c && bombs[ i ].r == r )
       {
-          if( bombs[ i ].owner >= 0 ) players[ bombs[ i ].owner ].bombs = imax( 0, players[ bombs[ i ].owner ].bombs - 1 );
+          if( bombs[ i ].owner >= 0 && !bombs[ i ].sheep ) players[ bombs[ i ].owner ].bombs = imax( 0, players[ bombs[ i ].owner ].bombs - 1 );
           remove_bomb( i );
       }
     kill_sheep_at( c, r );
@@ -37,7 +37,7 @@ void update_shrink()
 {
     round_frames++;
     if( round_frames < shrink_at ) return;
-    if( !next_step_cells() ) return;
+    if( !next_step_cells() ) { if( zone_done_at < 0 ) zone_done_at = round_frames; return; }
     for( int i = 0; i < step_count; i++ ) shrink_cell( step_c[ i ], step_r[ i ] );
     raise_event( EV_ZONE );
     zone_steps++;
@@ -88,6 +88,7 @@ void update_human( Player* p );
 void update_players()
 {
     bot_plans_left = BOT_PLANS;
+    walker_searches_left = 1;
     compute_danger();
     // bots take turns at being first, so the planning budget is shared fairly
     for( int k = 0; k < player_count; k++ )
@@ -96,6 +97,11 @@ void update_players()
         if( !p->alive ) continue;
         if( p->human ) update_human( p ); else update_bot( p );
     }
+}
+
+bool stalemate_over()
+{
+    return zone_done_at >= 0 && round_frames - zone_done_at > STALEMATE_AFTER;
 }
 
 // one frame of a battle round; true when the round has just ended
@@ -107,6 +113,7 @@ bool update_battle()
     update_shrink();
     update_players();
     int last;
+    if( stalemate_over() ) { round_winner = -1; return true; }
     if( count_alive( &last ) <= 1 )
     {
         round_winner = last;

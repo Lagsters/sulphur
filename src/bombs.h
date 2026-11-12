@@ -94,7 +94,8 @@ void explode( Bomb* b )
           hit_mark[ cell( nc, nr ) ] = hit_stamp;
           if( t == T_BLOCK ) { mset( nc, nr, T_EMPTY ); drop_powerup( nc, nr ); break; }
       }
-    if( b->owner >= 0 ) players[ b->owner ].bombs = imax( 0, players[ b->owner ].bombs - 1 );
+    // a sheep's blast belongs to its hero (no friendly fire) but was never one of his bombs
+    if( b->owner >= 0 && !b->sheep ) players[ b->owner ].bombs = imax( 0, players[ b->owner ].bombs - 1 );
 }
 
 // bombs covered by a blast go off in the same tick, until no new ones are hit

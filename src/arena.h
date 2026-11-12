@@ -21,8 +21,10 @@ void mset( int c, int r, int v )
 
 int gpx( int c ) { return ( c - 1 ) * TILE; }
 int gpy( int r ) { return r * TILE; }
-int gcol( int x ) { return x / TILE + 1; }
-int grow( int y ) { return y / TILE; }
+// floor division: a hitbox poking left of column 1 (x < 0) is in the wall column 0
+int floor_div( int v, int d ) { if( v >= 0 ) return v / d; return -( ( -v + d - 1 ) / d ); }
+int gcol( int x ) { return floor_div( x, TILE ) + 1; }
+int grow( int y ) { return floor_div( y, TILE ); }
 
 // the arena and its four start corners; the campaign uses wider or taller ones
 void set_arena( int w, int h )
@@ -81,6 +83,7 @@ void shuffle_dirs( int* order )
 
 int zone_x0, zone_y0, zone_x1, zone_y1;
 int zone_cycle, zone_steps, shrink_at, round_frames;
+int zone_done_at;           // frame the zone stopped at its middle strip, -1 while it moves
 
 void reset_shrink()
 {
@@ -89,6 +92,7 @@ void reset_shrink()
     zone_x0 = 1; zone_y0 = 1; zone_x1 = W - 2; zone_y1 = H - 2;
     shrink_at = SHRINK_DELAY + SHRINK_CYCLE - 1;
     round_frames = 0;
+    zone_done_at = -1;
 }
 
 // a box only ZONE_MIN_H tall loses its two side columns per step, a taller one its outline

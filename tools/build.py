@@ -6,6 +6,7 @@
 Textures and sounds come from the asset groups (tools/assetlib.py): assets/<group>/rom.txt, joined
 in the order of assetlib.GROUPS. src/gen/rom.h gets the first texture and sound id of every group.
 """
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -65,6 +66,10 @@ def convert(t, src, kind):
     return out
 
 
+def rel(path, base):
+    return Path(os.path.relpath(path, base)).as_posix()
+
+
 def build(program="src/main.c", name="sulphur"):
     t = tools()
     BUILD.mkdir(exist_ok=True)
@@ -78,12 +83,14 @@ def build(program="src/main.c", name="sulphur"):
         '<?xml version="1.0" encoding="UTF-8" ?>',
         '<rom-definition version="1.0">',
         f'    <rom type="cartridge" title="Sulphur" version="1.0" />',
-        f'    <binary path="{vbin.as_posix()}" />',
+        # packrom reads every path relative to the definition's folder (on Linux it rejects
+        # absolute ones)
+        f'    <binary path="{rel(vbin, obj)}" />',
         "    <textures>",
-        *[f'        <texture path="{convert(t, p, "texture").as_posix()}" />' for p in textures],
+        *[f'        <texture path="{rel(convert(t, p, "texture"), obj)}" />' for p in textures],
         "    </textures>",
         "    <sounds>",
-        *[f'        <sound path="{convert(t, p, "sound").as_posix()}" />' for p in sounds],
+        *[f'        <sound path="{rel(convert(t, p, "sound"), obj)}" />' for p in sounds],
         "    </sounds>",
         "</rom-definition>",
     ]

@@ -11,8 +11,8 @@
 #define SND_BASE_STORY 0
 #define TEX_BASE_SCENES 5
 #define SND_BASE_SCENES 0
-#define TEX_BASE_MUSIC 5
+#define TEX_BASE_MUSIC 9
 #define SND_BASE_MUSIC 0
-#define TEX_BASE_SFX 5
-#define SND_BASE_SFX 0
+#define TEX_BASE_SFX 9
+#define SND_BASE_SFX 58
 #endif

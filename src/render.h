@@ -27,19 +27,26 @@ int sy( int y ) { return ( ( y - cam_y ) * TILE_PX ) / TILE; }
 
 void use_texture( int t ) { select_texture( t ); }
 
-void game_spr( int id, int f, int x, int y )
+// select_texture + select_region + draw_region_at in one call: the arena draws hundreds of
+// sprites a frame, and each call costs more than the drawing itself
+void put_sprite( int texture, int region, int x, int y )
 {
-    use_texture( game_tex[ id ] );
-    select_region( game_reg[ id ] + f );
-    draw_region_at( x, y );
+    asm
+    {
+        "mov R0, {texture}"
+        "out GPU_SelectedTexture, R0"
+        "mov R0, {region}"
+        "out GPU_SelectedRegion, R0"
+        "mov R0, {x}"
+        "out GPU_DrawingPointX, R0"
+        "mov R0, {y}"
+        "out GPU_DrawingPointY, R0"
+        "out GPU_Command, GPUCommand_DrawRegion"
+    }
 }
 
-void story_spr( int id, int f, int x, int y )
-{
-    use_texture( story_tex[ id ] );
-    select_region( story_reg[ id ] + f );
-    draw_region_at( x, y );
-}
+void game_spr( int id, int f, int x, int y ) { put_sprite( game_tex[ id ], game_reg[ id ] + f, x, y ); }
+void story_spr( int id, int f, int x, int y ) { put_sprite( story_tex[ id ], story_reg[ id ] + f, x, y ); }
 
 void fill_rect( int x, int y, int w, int h, int color )
 {
@@ -103,23 +110,33 @@ void draw_map()
 {
     int c0 = imax( 0, cam_x / TILE ), r0 = imax( 0, cam_y / TILE );
     int c1 = imin( W - 1, c0 + 32 ), r1 = imin( H - 1, r0 + 18 );
-    int floor = spr_floor[ theme ], pillar = spr_pillar[ theme ], wall = spr_wall[ theme ], crate = spr_crate[ theme ];
+    int floor = spr_floor[ theme ];
+    int ft = game_tex[ floor ], fr = game_reg[ floor ];
+    int wt = game_tex[ spr_wall[ theme ] ], wr = game_reg[ spr_wall[ theme ] ];
+    int pt = game_tex[ spr_pillar[ theme ] ], pr = game_reg[ spr_pillar[ theme ] ];
+    int ct = game_tex[ spr_crate[ theme ] ], cr = game_reg[ spr_crate[ theme ] ];
+    int zt = game_tex[ GAME_ZONE ], zr = game_reg[ GAME_ZONE ];
     for( int r = r0; r <= r1; r++ )
     {
         int y = sy( gpy( r ) );
+        int k = cell( c0, r );
+        int x = sx( gpx( c0 ) );
         for( int c = c0; c <= c1; c++ )
         {
-            int x = sx( gpx( c ) );
-            int t = map[ cell( c, r ) ];
+            int t = map[ k ];
             if( t == T_WALL )
             {
-                if( outer_wall( c, r ) ) game_spr( wall, 0, x, y );
-                else if( is_pillar( c, r ) ) game_spr( pillar, 0, x, y );
-                else game_spr( GAME_ZONE, 0, x, y );
-                continue;
+                if( r == 0 || c == 0 || r == H - 1 || c == W - 1 ) put_sprite( wt, wr, x, y );
+                else if( is_pillar( c, r ) ) put_sprite( pt, pr, x, y );
+                else put_sprite( zt, zr, x, y );
             }
-            game_spr( floor, ( c * 7 + r * 13 + ( c * r ) % 5 ) % 4, x, y );
-            if( t == T_BLOCK ) game_spr( crate, 0, x, y );
+            else
+            {
+                put_sprite( ft, fr + ( c * 7 + r * 13 + ( c * r ) % 5 ) % 4, x, y );
+                if( t == T_BLOCK ) put_sprite( ct, cr, x, y );
+            }
+            k++;
+            x += TILE_PX;
         }
     }
     // the next closing step blinks, faster as it nears
@@ -205,7 +222,8 @@ void add_fig( int kind, int index, int y )
     fig_count++;
 }
 
-void draw_shadow( int x, int y ) { game_spr( GAME_SHADOW, 0, x, y ); }
+// the shadow's centre sits 3 px above a figure's draw point, where its feet touch the ground
+void draw_shadow( int x, int y ) { game_spr( GAME_SHADOW, 0, x, y - 2 ); }
 
 void draw_player( Player* p )
 {

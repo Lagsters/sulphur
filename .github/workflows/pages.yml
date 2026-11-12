@@ -1,0 +1,57 @@
+# Builds the game ROM and the Vircon32 web emulator and publishes them on GitHub Pages
+# (repository settings: Pages source "GitHub Actions"). Art is committed, so no Blender here.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python packages for the asset pipeline
+        run: pip install numpy pillow
+
+      # the Linux Vircon32 dev tools (compile, packrom, ...) link against SDL2 and libpng
+      - name: Libraries for the Vircon32 dev tools
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-2.0-0 libpng16-16t64
+
+      # dev tools, console source, emsdk and WebEmulator, all pinned in these two files
+      - uses: actions/cache@v4
+        with:
+          path: .toolchain
+          key: toolchain-${{ runner.os }}-${{ hashFiles('tools/toolchain.py', 'tools/runner/runner.cpp', 'tools/web/build.py') }}
+
+      - name: Build ROM and web emulator
+        run: python tools/web/build.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

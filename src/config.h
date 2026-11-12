@@ -52,6 +52,10 @@
 #define SHRINK_CYCLE   420
 #define ZONE_MIN_W     4
 #define ZONE_MIN_H     2
+// two bots left in the middle strip can circle each other forever: this long after the zone
+// stops they lay bombs even without a way out, and after STALEMATE_AFTER the round is a draw
+#define DESPERATE_AFTER  600
+#define STALEMATE_AFTER  2400
 
 // owner of a blast or bomb that belongs to nobody, or to a boss
 #define OWNER_NONE     -1

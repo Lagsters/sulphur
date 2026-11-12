@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sulphur — the sulphur legend</title>
+<link rel="icon" href="data:,">
 <style>
   :root { --bg: #0b0b0d; --panel: #16161a; --text: #d9d6cf; --muted: #8d8a83; --accent: #e8c547; }
   * { box-sizing: border-box; }
@@ -86,7 +87,7 @@ async function start() {
       FS.writeFile("/sulphur.v32", rom);
       // the console's memory card lives in IndexedDB, so campaign saves survive a reload
       FS.mkdir("/save");
-      FS.mount(FS.filesystems.IDBFS, {}, "/save");
+      FS.mount(Module.IDBFS, {}, "/save");
       Module.addRunDependency("memory-card");
       FS.syncfs(true, (error) => {
         if (error) console.warn("memory card not loaded", error);

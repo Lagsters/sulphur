@@ -39,13 +39,17 @@ UPSTREAM_SOURCES = ("Emulator/AudioOutput.cpp", "Emulator/EmulatorControl.cpp",
                     "Emulator/GamepadsInput.cpp", "Emulator/Globals.cpp", "Emulator/StopWatch.cpp",
                     "Emulator/VideoOutput.cpp", "DesktopInfrastructure/FilePaths.cpp",
                     "DesktopInfrastructure/Logger.cpp", "DesktopInfrastructure/StringFunctions.cpp")
+# upstream does not compile at the pinned commit; drop a fix once upstream has it
+PATCHES = {
+    "WebEmulator/Emulator/VideoOutput.cpp": ("0,   nstants::ScreenHeight", "0, Constants::ScreenHeight"),
+}
 
 OUT = ROOT / "build" / "web"
 OBJ = ROOT / "build" / "obj" / "web"
 
 
 def emsdk():
-    """emcc of the pinned emsdk, installed on first use."""
+    """em++ of the pinned emsdk, installed on first use."""
     target = CACHE / f"emsdk-{EMSDK_VERSION}"
     emscripten = target / "upstream" / "emscripten"
     if not (emscripten / "emcc.py").exists():
@@ -56,9 +60,11 @@ def emsdk():
         for step in ("install", "activate"):
             subprocess.run([sys.executable, str(target / "emsdk.py"), step, EMSDK_VERSION],
                            check=True, cwd=target)
+        # only the pinned SDK is installed; its download archives are not needed any more
+        shutil.rmtree(target / "downloads", ignore_errors=True)
     os.environ["EM_CONFIG"] = str(target / ".emscripten")
-    # Windows has emcc.exe (or emcc.bat in older releases), Linux the emcc script
-    return next(emscripten / n for n in ("emcc.exe", "emcc.bat", "emcc") if (emscripten / n).exists())
+    # Windows has em++.exe (or em++.bat in older releases), Linux the em++ script
+    return next(emscripten / n for n in ("em++.exe", "em++.bat", "em++") if (emscripten / n).exists())
 
 
 def webemulator():
@@ -75,11 +81,16 @@ def webemulator():
                     out = tmp / rel
                     out.parent.mkdir(parents=True, exist_ok=True)
                     out.write_bytes(tar.extractfile(m).read())
+        for rel, (old, new) in PATCHES.items():
+            text = (tmp / rel).read_text(encoding="utf-8")
+            if old not in text:
+                sys.exit(f"web build: patch for {rel} no longer applies")
+            (tmp / rel).write_text(text.replace(old, new), encoding="utf-8")
         tmp.rename(target)
     return target
 
 
-def compile_emulator(emcc, web, console, bios):
+def compile_emulator(compiler, web, console, bios):
     """vircon32.js/.wasm/.data in build/web; the BIOS is preloaded into the .data file."""
     logic = sorted((console / "DesktopEmulator/ConsoleLogic").glob("*.cpp"))
     sources = [*(web / "WebEmulator" / s for s in UPSTREAM_SOURCES), HERE / "main.cpp", *logic]
@@ -93,12 +104,12 @@ def compile_emulator(emcc, web, console, bios):
         stamp = OBJ / (src.stem + ".stamp")
         key = hashlib.sha256(src.read_bytes() + " ".join(map(str, flags)).encode()).hexdigest()
         if not obj.exists() or not stamp.exists() or stamp.read_text() != key:
-            run([emcc, *flags, "-Wno-unused-parameter", "-c", src, "-o", obj])
+            run([compiler, *flags, "-Wno-unused-parameter", "-c", src, "-o", obj])
             stamp.write_text(key)
         objects.append(obj)
-    run([emcc, *flags, *objects, "-o", OUT / "vircon32.js",
+    run([compiler, *flags, *objects, "-o", OUT / "vircon32.js",
          "-sENVIRONMENT=web", "-sALLOW_MEMORY_GROWTH=1", "-sINITIAL_MEMORY=64MB",
-         "-lidbfs.js", "-sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency",
+         "-lidbfs.js", "-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,addRunDependency,removeRunDependency",
          "--preload-file", f"{bios}@/Bios/StandardBios.v32"])
 
 
@@ -108,19 +119,19 @@ def run(cmd):
         sys.exit((result.stdout + result.stderr).strip() or f"failed: {cmd}")
 
 
-def licences(web, emcc):
+def licences(web, compiler):
     """Notices of everything shipped in build/web besides our own code."""
     readme = (web / "WebEmulator/Data/Readme.txt").read_text(encoding="utf-8", errors="replace")
-    vircon = readme[readme.index("Copyright"):].split("\n---")[0]
-    emscripten = (emcc.parent / "LICENSE").read_text(encoding="utf-8")
-    sdl = next((emcc.parent / "cache").rglob("SDL2*/LICENSE.txt"), None)
+    section = readme[readme.index("Copyright"):].split("\n---")[0]
+    vircon = "\n".join(line.strip() for line in section.splitlines())
+    emscripten = (compiler.parent / "LICENSE").read_text(encoding="utf-8")
+    sdl = next((compiler.parent / "cache/ports/sdl2").glob("*/LICENSE.txt"))
     parts = [
         "Sulphur in the browser runs on the Vircon32 web emulator and its console logic",
         "(https://github.com/vircon32), 3-Clause BSD License; Vircon32 assets CC BY 4.0.",
         "", vircon.strip(), "", "=" * 72,
         "SDL2 (Emscripten port, https://libsdl.org), zlib License:", "",
-        sdl.read_text(encoding="utf-8").strip() if sdl else
-        "Simple DirectMedia Layer, Copyright (C) 1997-2025 Sam Lantinga. zlib License.",
+        sdl.read_text(encoding="utf-8").strip(),
         "", "=" * 72, "Emscripten runtime (https://emscripten.org):", "", emscripten.strip(), "",
     ]
     (OUT / "LICENSES.txt").write_text("\n".join(parts), encoding="utf-8")
@@ -130,13 +141,13 @@ def build():
     rom = rom_build.build()
     t = tools()
     console = t["bios"].parents[3]
-    emcc = emsdk()
+    compiler = emsdk()
     web = webemulator()
     OUT.mkdir(parents=True, exist_ok=True)
-    compile_emulator(emcc, web, console, t["bios"])
+    compile_emulator(compiler, web, console, t["bios"])
     shutil.copyfile(rom, OUT / "sulphur.v32")
     shutil.copyfile(ROOT / "web/index.html", OUT / "index.html")
-    licences(web, emcc)
+    licences(web, compiler)
     return OUT
 
 

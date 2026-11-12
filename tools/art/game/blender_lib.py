@@ -183,8 +183,9 @@ def mat(name, color, rough=0.7, metal=0.0, color2=None, noise_scale=0.4, bump=0.
 
 
 def brick_mat(name, c1, c2, mortar, scale, brick_w=0.5, row_h=0.25, mortar_size=0.02, bump=0.6,
-              rough=0.85, offset=0.5, grime=None):
-    """Blender's Brick Texture in object space, with mortar relief."""
+              rough=0.85, offset=0.5, grime=None, vertical=False):
+    """Blender's Brick Texture in object space, with mortar relief; vertical lays the courses on
+    the faces that look at the camera (x+y along a course, z up the wall)."""
     m = _new_material(name)
     nt = m.node_tree
     b = _bsdf(m)
@@ -192,6 +193,17 @@ def brick_mat(name, c1, c2, mortar, scale, brick_w=0.5, row_h=0.25, mortar_size=
     b.inputs["Specular IOR Level"].default_value = 0.3
     tc = nt.nodes.new("ShaderNodeTexCoord")
     br = nt.nodes.new("ShaderNodeTexBrick")
+    if vertical:
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(tc.outputs["Object"], sep.inputs[0])
+        add = nt.nodes.new("ShaderNodeMath")
+        add.operation = "ADD"
+        nt.links.new(sep.outputs[0], add.inputs[0])
+        nt.links.new(sep.outputs[1], add.inputs[1])
+        comb = nt.nodes.new("ShaderNodeCombineXYZ")
+        nt.links.new(add.outputs[0], comb.inputs[0])
+        nt.links.new(sep.outputs[2], comb.inputs[1])
+        nt.links.new(comb.outputs[0], br.inputs["Vector"])
     br.inputs["Color1"].default_value = (*lin(c1), 1)
     br.inputs["Color2"].default_value = (*lin(c2), 1)
     br.inputs["Mortar"].default_value = (*lin(mortar), 1)
@@ -200,7 +212,8 @@ def brick_mat(name, c1, c2, mortar, scale, brick_w=0.5, row_h=0.25, mortar_size=
     br.inputs["Brick Width"].default_value = brick_w
     br.inputs["Row Height"].default_value = row_h
     br.offset = offset
-    nt.links.new(tc.outputs["Object"], br.inputs["Vector"])
+    if not vertical:
+        nt.links.new(tc.outputs["Object"], br.inputs["Vector"])
     color_out = br.outputs["Color"]
     if grime:
         tex = nt.nodes.new("ShaderNodeTexNoise")
