@@ -17,7 +17,17 @@
   #screen { position: relative; width: min(100vw - 32px, (100vh - 190px) * 16 / 9);
     aspect-ratio: 16 / 9; min-width: 288px; background: #000; }
   #screen canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important;
-    image-rendering: pixelated; image-rendering: crisp-edges; display: block; outline: none; }
+    image-rendering: pixelated; image-rendering: crisp-edges; display: block; outline: none;
+    object-fit: contain; }
+  /* full screen: the box takes the whole display, the picture keeps 16:9 with black bars */
+  #screen:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #screen:-webkit-full-screen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+  #screen:fullscreen #overlay, #screen:-webkit-full-screen #overlay { font-size: 24px; }
+  #full { position: absolute; right: 8px; bottom: 8px; padding: 4px 10px; border: 1px solid #3a3a40;
+    border-radius: 4px; background: rgba(22, 22, 26, .8); color: var(--text); font: 13px system-ui, sans-serif;
+    cursor: pointer; opacity: .55; }
+  #full:hover { opacity: 1; }
+  #screen:fullscreen #full, #screen:-webkit-full-screen #full { display: none; }
   #overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     text-align: center; padding: 16px; background: rgba(0, 0, 0, .78); cursor: pointer; font-size: 18px; }
   #overlay[hidden] { display: none; }
@@ -37,6 +47,7 @@
 <div id="screen">
   <canvas id="canvas" width="640" height="360" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
   <div id="overlay">Click or press any key to start</div>
+  <button id="full" type="button" title="Full screen (F)">⛶ Full screen</button>
 </div>
 <div id="legend">
   <div><b>Move</b> <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></div>
@@ -45,6 +56,7 @@
   <div><b>Start</b> pause / skip <kbd>Enter</kbd></div>
   <div><b>X</b> <kbd>S</kbd> <b>Y</b> <kbd>A</kbd> <b>L</b> <kbd>Q</kbd> <b>R</b> <kbd>W</kbd></div>
   <div><b>Reset</b> <kbd>F5</kbd></div>
+  <div><b>Full screen</b> <kbd>F</kbd> or double-click, <kbd>Esc</kbd> leaves</div>
   <div><b>Gamepads</b> one per player: A bottom, B right, Start, d-pad or stick</div>
 </div>
 <footer>Runs on the <a href="https://github.com/vircon32/WebEmulator">Vircon32 web emulator</a>
@@ -110,8 +122,29 @@ function resumeAudio() {
   if (context && context.state === "suspended") context.resume();
 }
 
+// full screen holds the game box (picture and overlay); the browser's own Esc leaves it
+const screenBox = document.getElementById("screen");
+function toggleFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    return;
+  }
+  const enter = screenBox.requestFullscreen || screenBox.webkitRequestFullscreen;
+  if (!enter) return;
+  const pending = enter.call(screenBox);
+  if (pending && pending.catch) pending.catch((e) => console.warn("full screen refused", e));
+  canvas.focus();
+}
+document.getElementById("full").addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
+canvas.addEventListener("dblclick", toggleFullscreen);
+
 overlay.addEventListener("click", start);
-window.addEventListener("keydown", (e) => { if (!started) { e.preventDefault(); start(); } resumeAudio(); });
+window.addEventListener("keydown", (e) => {
+  // F is no console button (the pad sits on arrows, X, Z, S, A, Q, W and Enter)
+  if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); if (!started) start(); return; }
+  if (!started) { e.preventDefault(); start(); }
+  resumeAudio();
+});
 window.addEventListener("pointerdown", resumeAudio);
 </script>
 </body>
