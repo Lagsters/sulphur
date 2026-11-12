@@ -1,0 +1,2 @@
+texture assets/story/tex0.png
+texture assets/story/tex1.png
