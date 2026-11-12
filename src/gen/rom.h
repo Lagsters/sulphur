@@ -5,14 +5,14 @@
 #define SND_BASE_CORE 0
 #define TEX_BASE_FONT 1
 #define SND_BASE_FONT 0
-#define TEX_BASE_GAME 1
+#define TEX_BASE_GAME 2
 #define SND_BASE_GAME 0
-#define TEX_BASE_STORY 2
+#define TEX_BASE_STORY 3
 #define SND_BASE_STORY 0
-#define TEX_BASE_SCENES 4
+#define TEX_BASE_SCENES 5
 #define SND_BASE_SCENES 0
-#define TEX_BASE_MUSIC 4
+#define TEX_BASE_MUSIC 5
 #define SND_BASE_MUSIC 0
-#define TEX_BASE_SFX 4
+#define TEX_BASE_SFX 5
 #define SND_BASE_SFX 0
 #endif

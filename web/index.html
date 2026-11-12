@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sulphur — the sulphur legend</title>
+<style>
+  :root { --bg: #0b0b0d; --panel: #16161a; --text: #d9d6cf; --muted: #8d8a83; --accent: #e8c547; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; }
+  h1 { margin: 12px 16px 8px; font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+  h1 span { color: var(--muted); font-weight: 400; }
+  /* 16:9 box as large as the window allows, leaving room for the title and the legend */
+  #screen { position: relative; width: min(100vw - 32px, (100vh - 190px) * 16 / 9);
+    aspect-ratio: 16 / 9; min-width: 288px; background: #000; }
+  #screen canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important;
+    image-rendering: pixelated; image-rendering: crisp-edges; display: block; outline: none; }
+  #overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 16px; background: rgba(0, 0, 0, .78); cursor: pointer; font-size: 18px; }
+  #overlay[hidden] { display: none; }
+  #overlay.error { color: #ff8a7a; cursor: default; font-size: 15px; white-space: pre-wrap; }
+  #legend { display: flex; flex-wrap: wrap; gap: 8px 28px; justify-content: center; margin: 12px 16px;
+    color: var(--muted); font-size: 13px; }
+  #legend b { color: var(--text); font-weight: 600; }
+  kbd { display: inline-block; min-width: 1.6em; padding: 0 5px; border: 1px solid #3a3a40;
+    border-bottom-width: 2px; border-radius: 4px; background: var(--panel); color: var(--text);
+    font: 12px/1.6 ui-monospace, Consolas, monospace; text-align: center; }
+  footer { margin: auto 16px 10px; color: var(--muted); font-size: 12px; text-align: center; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Sulphur <span>— the sulphur legend</span></h1>
+<div id="screen">
+  <canvas id="canvas" width="640" height="360" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="overlay">Click or press any key to start</div>
+</div>
+<div id="legend">
+  <div><b>Move</b> <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></div>
+  <div><b>A</b> bomb / next <kbd>X</kbd></div>
+  <div><b>B</b> sheep / back <kbd>Z</kbd></div>
+  <div><b>Start</b> pause / skip <kbd>Enter</kbd></div>
+  <div><b>X</b> <kbd>S</kbd> <b>Y</b> <kbd>A</kbd> <b>L</b> <kbd>Q</kbd> <b>R</b> <kbd>W</kbd></div>
+  <div><b>Reset</b> <kbd>F5</kbd></div>
+  <div><b>Gamepads</b> one per player: A bottom, B right, Start, d-pad or stick</div>
+</div>
+<footer>Runs on the <a href="https://github.com/vircon32/WebEmulator">Vircon32 web emulator</a>
+  (BSD-3) — <a href="LICENSES.txt">licences</a></footer>
+<script>
+"use strict";
+const overlay = document.getElementById("overlay");
+const canvas = document.getElementById("canvas");
+let started = false;
+
+function fail(message) {
+  overlay.hidden = false;
+  overlay.className = "error";
+  overlay.textContent = "The game stopped:\n" + message;
+}
+
+// the page must not scroll while the game uses arrows, Enter and F5
+const gameKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", " ", "F5"]);
+window.addEventListener("keydown", (e) => { if (started && gameKeys.has(e.key)) e.preventDefault(); });
+
+// browsers start audio only after a click or key press; this page loads the emulator only then
+async function start() {
+  if (started) return;
+  started = true;
+  overlay.textContent = "Loading…";
+  let rom;
+  try {
+    const response = await fetch("sulphur.v32");
+    if (!response.ok) throw new Error("sulphur.v32: HTTP " + response.status);
+    rom = new Uint8Array(await response.arrayBuffer());
+  } catch (e) {
+    fail(e.message);
+    return;
+  }
+  window.Module = {
+    canvas,
+    arguments: ["/sulphur.v32"],
+    preRun: [() => {
+      const FS = Module.FS;
+      FS.writeFile("/sulphur.v32", rom);
+      // the console's memory card lives in IndexedDB, so campaign saves survive a reload
+      FS.mkdir("/save");
+      FS.mount(FS.filesystems.IDBFS, {}, "/save");
+      Module.addRunDependency("memory-card");
+      FS.syncfs(true, (error) => {
+        if (error) console.warn("memory card not loaded", error);
+        Module.removeRunDependency("memory-card");
+      });
+    }],
+    onRuntimeInitialized: () => { overlay.hidden = true; canvas.focus(); },
+    onEmulatorError: fail,
+    onAbort: (what) => fail(String(what)),
+  };
+  const script = document.createElement("script");
+  script.src = "vircon32.js";
+  script.onerror = () => fail("vircon32.js did not load");
+  document.body.appendChild(script);
+}
+
+// a browser may still hold the audio context suspended; any later gesture resumes it
+function resumeAudio() {
+  const context = window.Module && Module.SDL2 && Module.SDL2.audioContext;
+  if (context && context.state === "suspended") context.resume();
+}
+
+overlay.addEventListener("click", start);
+window.addEventListener("keydown", (e) => { if (!started) { e.preventDefault(); start(); } resumeAudio(); });
+window.addEventListener("pointerdown", resumeAudio);
+</script>
+</body>
+</html>

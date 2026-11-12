@@ -449,6 +449,15 @@ bool try_bomb( Player* p )
 }
 
 // the decision BlasTIC made every frame: flee, bomb, pick up, hunt, or wander
+bool dragon_alive();
+bool launch_sheep( Player* p );
+bool goal_grazing_sheep( Player* p, int c, int r )
+{
+    for( int i = 0; i < MAX_SHEEP; i++ )
+      if( sheep[ i ].alive && sheep[ i ].state == SHEEP_GRAZE && sheep[ i ].c == c && sheep[ i ].r == r ) return true;
+    return false;
+}
+
 void bot_plan( Player* p )
 {
     bool in_danger = dangerous( p, p->c, p->r );
@@ -467,6 +476,13 @@ void bot_plan( Player* p )
         if( d < 0 ) d = rnd( 4 );
         set_bot_dir( p, d );
         return;
+    }
+    // at the dragon a hero bot lets its sheep go, or hunts for one
+    if( camp_mode && p->team == 1 && dragon_alive() )
+    {
+        if( p->sheep > 0 ) launch_sheep( p );
+        int s = path_dir( p, &open_safe, &goal_grazing_sheep );
+        if( s >= 0 ) { set_bot_dir( p, s ); return; }
     }
     if( try_bomb( p ) ) { set_bot_dir( p, 4 ); return; }
     int d = pickup_dir( p );

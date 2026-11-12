@@ -1,0 +1,137 @@
+"""The font group: two bitmap styles rendered from OFL fonts (licences in assets/font/).
+
+    python tools/font/make.py
+
+body   Jersey 10 at its own pixel grid, white with a 1 px dark outline; colour comes from
+       set_multiply_color, the outline stays dark.
+title  Grenze Gotisch (weight 800), gilded vertical gradient with a 2 px dark outline,
+       dithered to 12-bit colour.
+
+Each style is one sprite of the font group with one frame per glyph: codes 32..126, then
+128..145 in the order of assetlib.POLISH. All frames of a style share one cell, so the hotspot
+is the pen position at the top of the line. Advance widths go to src/gen/font_metrics.h.
+"""
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from assetlib import POLISH, ROOT, _atomic_write, amiga, pack_group  # noqa: E402
+
+CHARS = [chr(c) for c in range(32, 127)] + list(POLISH)
+
+OUTLINE_RGB = (24, 14, 8)
+# top to bottom of the cap height: pale highlight, gold, deep amber, a bright reflected band, dark base
+GOLD = [(0.00, (255, 250, 210)), (0.30, (255, 214, 90)), (0.55, (214, 140, 24)),
+        (0.62, (255, 236, 150)), (0.80, (230, 168, 40)), (1.00, (140, 76, 10))]
+
+
+def load(name, size, weight=None):
+    font = ImageFont.truetype(str(HERE / name), size)
+    if weight is not None:
+        font.set_variation_by_axes([weight])
+    return font
+
+
+def glyph_masks(font, outline):
+    """Per glyph: a boolean mask in a shared cell and the advance; the cell origin (pen at the
+    baseline) is the same for all glyphs."""
+    boxes = [font.getbbox(ch, anchor="ls") for ch in CHARS if ch != " "]
+    left = min(b[0] for b in boxes) - outline
+    top = min(b[1] for b in boxes) - outline
+    right = max(b[2] for b in boxes) + outline
+    bottom = max(b[3] for b in boxes) + outline
+    w, h = right - left, bottom - top
+    origin = (-left, -top)
+    masks = []
+    for ch in CHARS:
+        img = Image.new("L", (w, h), 0)
+        draw = ImageDraw.Draw(img)
+        draw.fontmode = "1"
+        draw.text(origin, ch, font=font, fill=255, anchor="ls")
+        masks.append(np.asarray(img) >= 128)
+    advances = [round(font.getlength(ch)) for ch in CHARS]
+    return masks, advances, origin, (w, h)
+
+
+def dilate(mask, radius):
+    """Pixels within `radius` of the mask (a disc, so 2 px outlines get rounded corners)."""
+    out = mask.copy()
+    h, w = mask.shape
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            if dx * dx + dy * dy > radius * radius + radius:
+                continue
+            shifted = np.zeros_like(mask)
+            shifted[max(0, dy):h + min(0, dy), max(0, dx):w + min(0, dx)] = \
+                mask[max(0, -dy):h - max(0, dy), max(0, -dx):w - max(0, dx)]
+            out |= shifted
+    return out
+
+
+def compose(mask, ring, fill_rgb):
+    """RGBA frame: the outline ring in OUTLINE_RGB, the glyph in fill_rgb (h x w x 3)."""
+    h, w = mask.shape
+    rgba = np.zeros((h, w, 4), np.uint8)
+    rgba[ring] = (*OUTLINE_RGB, 255)
+    rgba[mask, :3] = fill_rgb[mask]
+    rgba[mask, 3] = 255
+    return Image.fromarray(rgba, "RGBA")
+
+
+def gold_rows(h, cap_top, baseline):
+    """A vertical gold gradient for every row of the cell, spread over the cap height."""
+    rows = np.zeros((h, 3), np.float32)
+    for y in range(h):
+        t = min(1.0, max(0.0, (y - cap_top) / max(1, baseline - cap_top)))
+        for (t0, c0), (t1, c1) in zip(GOLD, GOLD[1:]):
+            if t0 <= t <= t1:
+                k = (t - t0) / (t1 - t0)
+                rows[y] = [a + (b - a) * k for a, b in zip(c0, c1)]
+                break
+    return rows
+
+
+def body_style():
+    font = load("Jersey10-Regular.ttf", 1400 / 75)  # 75 font units are one pixel
+    masks, advances, origin, (w, h) = glyph_masks(font, outline=1)
+    white = np.full((h, w, 3), 255, np.uint8)
+    frames = [compose(m, dilate(m, 1) & ~m, white) for m in masks]
+    # one extra pixel of tracking so a neighbour's outline never covers a stroke
+    return frames, [a + 1 for a in advances], origin, h
+
+
+def title_style():
+    font = load("GrenzeGotisch[wght].ttf", 36, weight=800)
+    masks, advances, origin, (w, h) = glyph_masks(font, outline=2)
+    cap_top = origin[1] + font.getbbox("H", anchor="ls")[1]
+    rows = gold_rows(h, cap_top, origin[1])
+    gold = np.broadcast_to(rows[:, None, :], (h, w, 3)).astype(np.uint8)
+    frames = [amiga(compose(m, dilate(m, 2) & ~m, gold), dither=0.8) for m in masks]
+    return frames, [a + 2 for a in advances], origin, h
+
+
+def c_array(name, values):
+    return f"int[ {len(values)} ] {name} = {{ {', '.join(str(v) for v in values)} }};"
+
+
+def main():
+    body, body_adv, body_origin, body_h = body_style()
+    title, title_adv, title_origin, title_h = title_style()
+    pack_group("font", [("body", body, (body_origin[0], 0)), ("title", title, (title_origin[0], 0))])
+    lines = ["// generated by tools/font/make.py: do not edit",
+             "#ifndef GEN_FONT_METRICS_H", "#define GEN_FONT_METRICS_H", "",
+             f"#define FONT_GLYPHS {len(CHARS)}",
+             f"#define FONT_BODY_LINE_H {body_h}",
+             f"#define FONT_TITLE_LINE_H {title_h}",
+             c_array("font_body_adv", body_adv),
+             c_array("font_title_adv", title_adv), "", "#endif", ""]
+    _atomic_write(ROOT / "src/gen/font_metrics.h", "\n".join(lines))
+    print(f"body cell {body[0].size}, title cell {title[0].size}")
+
+
+if __name__ == "__main__":
+    main()

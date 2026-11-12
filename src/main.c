@@ -8,26 +8,25 @@
 #include "string.h"
 #include "memcard.h"
 
-#include "render.h"
+#include "ui.h"
 
 void main()
 {
-    init_render();
+    init_strings();
+    init_sprites();
+    text_init();
+    sound_init();
+    ui_init();
+    load_save();
     srand( get_time() + 1 );
-    for( int i = 0; i < MAX_PLAYERS; i++ ) human_slot[ i ] = false;
-    demo = true;
-    start_match();
+    enter( ST_TITLE );
     while( true )
     {
         frame++;
+        clear_screen( color_black );
+        ui_frame();
+        sound_frame();
         for( int e = 0; e < EV_COUNT; e++ ) events[ e ] = 0;
-        if( over_timer > 0 )
-        {
-            over_timer--;
-            if( over_timer == 0 ) { if( match_winner() >= 0 ) start_match(); else start_battle_round(); }
-        }
-        else if( update_battle() ) over_timer = 120;
-        draw_arena_dev();
         end_frame();
     }
 }

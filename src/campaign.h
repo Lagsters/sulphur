@@ -25,6 +25,8 @@
 #define SHEEP_CAP      3
 #define SHEEP_FUSE     420     // frames a lit sheep runs before it goes off on its own
 #define SHEEP_RESPAWN  300
+#define SHEEP_STAMINA  180     // frames a sheep can flee before it must stop for breath
+#define SHEEP_REST     90
 #define DRAGON_HP      3       // sheep it takes
 #define LIVES          3
 
@@ -148,7 +150,7 @@ bool spawn_sheep( int k )
         if( s->alive ) continue;
         s->alive = true; s->state = SHEEP_GRAZE;
         s->c = k % MAP_STRIDE; s->r = k / MAP_STRIDE; s->x = gpx( s->c ); s->y = gpy( s->r );
-        s->dx = 0; s->dy = 0; s->t = 60; s->owner = OWNER_NONE;
+        s->dx = 0; s->dy = 0; s->t = 60; s->run = 0; s->owner = OWNER_NONE;
         return true;
     }
     return false;
@@ -190,7 +192,7 @@ bool launch_sheep( Player* p )
         if( s->alive ) continue;
         s->alive = true; s->state = SHEEP_LIT;
         s->c = p->c; s->r = p->r; s->x = gpx( p->c ); s->y = gpy( p->r );
-        s->dx = 0; s->dy = 0; s->t = SHEEP_FUSE; s->owner = p->id;
+        s->dx = 0; s->dy = 0; s->t = SHEEP_FUSE; s->run = 0; s->owner = p->id;
         p->sheep--;
         raise_event( EV_FIRE );
         return true;
@@ -222,6 +224,9 @@ void sheep_choose( Sheep* s )
 {
     int here = nearest_hero_dist( s->c, s->r );
     s->dx = 0; s->dy = 0;
+    if( s->t > 0 ) return;
+    // a sheep runs faster than a man, but not for long: then it stands and pants
+    if( s->run > SHEEP_STAMINA ) { s->run = 0; s->t = SHEEP_REST; return; }
     if( here <= 4 )
     {
         int best = -1, best_d = here;
@@ -237,7 +242,6 @@ void sheep_choose( Sheep* s )
         if( best >= 0 ) { s->dx = DIR_X[ best ]; s->dy = DIR_Y[ best ]; }
         return;
     }
-    if( s->t > 0 ) return;
     if( rnd( 100 ) < 35 ) { s->t = 60 + rnd( 90 ); return; }
     int first = rnd( 4 );
     for( int i = 0; i < 4; i++ )
@@ -282,7 +286,9 @@ void update_sheep()
             if( !s->alive ) continue;
             if( centred ) sheep_choose( s );
             // a frightened sheep runs twice as fast as a man
-            int speed = pick( nearest_hero_dist( s->c, s->r ) <= 4, 2, 1 );
+            bool fleeing = nearest_hero_dist( s->c, s->r ) <= 4 && ( s->dx != 0 || s->dy != 0 );
+            if( fleeing ) s->run++; else if( s->run > 0 ) s->run--;
+            int speed = pick( fleeing, 2, 1 );
             for( int k = 0; k < speed; k++ )
             {
                 if( k > 0 && s->x == gpx( s->c ) && s->y == gpy( s->r ) ) break;

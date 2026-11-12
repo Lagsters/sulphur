@@ -81,6 +81,7 @@ struct Sheep
     bool alive;
     int state, c, r, x, y, dx, dy;
     int t;                  // frames of grazing left, or of the fuse
+    int run;                // frames it has been running from heroes; a tired sheep stops
     int owner;
 };
 
