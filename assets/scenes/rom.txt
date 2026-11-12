@@ -1,0 +1,4 @@
+texture assets/scenes/tex0.png
+texture assets/scenes/tex1.png
+texture assets/scenes/tex2.png
+texture assets/scenes/tex3.png

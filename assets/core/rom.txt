@@ -1,0 +1,1 @@
+texture assets/core/tex0.png
